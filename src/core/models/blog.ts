@@ -47,4 +47,10 @@ const blogSchema = new Schema<IBlog>({
     timestamps: true
 });
 
+// Add indexes for better performance
+blogSchema.index({ category: 1 });
+blogSchema.index({ author: 1 });
+blogSchema.index({ tags: 1 });
+blogSchema.index({ createdAt: -1 });
+
 export default mongoose.model<IBlog>('Blog', blogSchema);

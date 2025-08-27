@@ -65,4 +65,11 @@ const yachtSchema = new Schema<IYacht>({
     timestamps: true
 });
 
+// Add indexes for better performance
+yachtSchema.index({ type: 1 });
+yachtSchema.index({ location: 1 });
+yachtSchema.index({ price: 1 });
+yachtSchema.index({ capacity: 1 });
+yachtSchema.index({ createdAt: -1 });
+
 export default mongoose.model<IYacht>('Yacht', yachtSchema);
