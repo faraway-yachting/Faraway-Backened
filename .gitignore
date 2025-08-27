@@ -98,6 +98,14 @@ dist
 # Sveltekit cache directory
 .svelte-kit/
 
+# Uploads directory
+uploads/
+src/uploads/
+
+# Environment files
+.env.development
+.env.production
+
 # vitepress build output
 **/.vitepress/dist
 
