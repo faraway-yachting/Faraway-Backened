@@ -1,6 +1,17 @@
 import winston from "winston";
 import path from "path";
 
+// Import environment configuration
+let logLevel = "info";
+try {
+    // Dynamic import to avoid circular dependency
+    const { getEnv } = await import('../../config/environment.js');
+    logLevel = getEnv('LOG_LEVEL') || "info";
+} catch {
+    // Fallback to environment variable if import fails
+    logLevel = process.env['LOG_LEVEL'] || "info";
+}
+
 // Custom log format for production
 const productionFormat = winston.format.combine(
     winston.format.timestamp(),
@@ -22,7 +33,7 @@ const developmentFormat = winston.format.combine(
 );
 
 const logger = winston.createLogger({
-    level: process.env['LOG_LEVEL'] || "info",
+    level: logLevel,
     format: process.env['NODE_ENV'] === 'production' ? productionFormat : developmentFormat,
     defaultMeta: { 
         service: "faraway-backend",

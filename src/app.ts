@@ -6,8 +6,8 @@ import cookieParser from 'cookie-parser';
 import { requestValidator, errorHandler, addPortalContext } from './core/middleware/index.js';
 import { rateLimitMiddleware } from './config/rate-limit.js';
 import { checkDatabaseHealth } from './config/db.js';
-import { cacheService } from './core/utils/services/cache.service.js';
 import apiRoutes from './api/index.js';
+import environment from './config/environment.js';
 
 const app = express();
 
@@ -15,8 +15,8 @@ const app = express();
 app.use(
     cors({
         origin: [
+            environment.FRONTEND_URL,
             'https://faraway-admin-panel.vercel.app',
-            'http://localhost:3000',
             'https://fa-taupe.vercel.app'
         ],
         credentials: true,
@@ -28,7 +28,7 @@ app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Rate limiting
+// Rate limiting (always enabled for security)
 app.use('/api', rateLimitMiddleware());
 
 // Static files
@@ -47,27 +47,25 @@ app.use('/api', addPortalContext);
 app.get('/health', async (req: Request, res: Response) => {
     try {
         const dbHealth = await checkDatabaseHealth();
-        const cacheStats = cacheService.getStats();
         const memoryUsage = process.memoryUsage();
 
         const healthStatus = {
             status: 'OK',
             timestamp: new Date().toISOString(),
             uptime: process.uptime(),
-            environment: process.env['NODE_ENV'] || 'development',
-            version: process.env['npm_package_version'] || '1.0.0',
+            environment: environment.NODE_ENV,
+            version: environment.API_VERSION,
             services: {
                 database: dbHealth ? 'healthy' : 'unhealthy',
-                cache: 'healthy',
                 memory: {
                     rss: `${Math.round(memoryUsage.rss / 1024 / 1024)}MB`,
                     heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`,
                     heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)}MB`
                 }
             },
-            cache: {
-                size: cacheStats.size,
-                keys: cacheStats.keys.length
+            features: {
+                emailService: environment.ENABLE_EMAIL_SERVICE,
+                cloudinary: environment.CLOUDINARY_ENABLED
             }
         };
 

@@ -1,28 +1,30 @@
 import mongoose from 'mongoose';
 import { logger } from '../core/utils/logger.js';
+import environment from './environment.js';
 
 const connectDB = async (): Promise<void> => {
     try {
-        const mongoURI = process.env['MONGO_URI'];
+        const mongoURI = environment.MONGO_URI;
         
         if (!mongoURI) {
             throw new Error('MONGO_URI is not defined in environment variables');
         }
 
-        // Development-friendly MongoDB connection options
+        // Simplified MongoDB connection options
         const options = {
-            maxPoolSize: 10, // Maximum number of connections in the pool
-            serverSelectionTimeoutMS: 5000, // Timeout for server selection
-            socketTimeoutMS: 45000, // Timeout for socket operations
-            autoIndex: process.env['NODE_ENV'] === 'development', // Only build indexes in development
+            maxPoolSize: environment.NODE_ENV === 'production' ? 20 : 10,
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
+            autoIndex: environment.NODE_ENV === 'development',
             retryWrites: true,
-            w: 'majority' as const, // Write concern for production
-            readPreference: 'primary' as const // Use primary for development to allow index creation
+            w: 'majority' as const,
+            dbName: environment.MONGO_DB_NAME
         };
 
         await mongoose.connect(mongoURI, options);
         
         logger.info('✅ MongoDB connected successfully');
+        logger.info(`🗄️  Database: ${environment.MONGO_DB_NAME}`);
         
         // Enhanced connection event handling
         mongoose.connection.on('error', (err) => {
