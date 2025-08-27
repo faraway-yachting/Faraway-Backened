@@ -1,7 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
+import { type Request, type Response, type NextFunction } from 'express';
 import BlogService from './blog.service.js';
 import { successHandler } from '../../../core/utils/helpers/success-handler.js';
-import { logger } from '../../../core/utils/logger.js';
 import { ApiError } from '../../../core/utils/helpers/api-error.js';
 
 class BlogController {

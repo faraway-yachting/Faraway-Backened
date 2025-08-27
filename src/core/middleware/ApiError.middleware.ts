@@ -1,7 +1,7 @@
-import { Request, Response, NextFunction } from 'express';
+import { type Request, type Response } from 'express';
 import { logger } from '../utils/logger.js';
 
-const ApiError = (err: any, req: Request, res: Response, _next: NextFunction): void => {
+const ApiError = (err: any, req: Request, res: Response): void => {
     const statusCode = err.status || 500;
     const rawMessage = err.message || 'Internal Server Error';
 

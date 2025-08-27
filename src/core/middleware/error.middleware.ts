@@ -1,12 +1,11 @@
-import { Request, Response, NextFunction } from 'express';
+import { type Request, type Response } from 'express';
 import { logger } from '../utils/logger.js';
 import { ApiError } from '../utils/helpers/api-error.js';
 
 export const errorHandler = (
     err: any,
     req: Request,
-    res: Response,
-    next: NextFunction
+    res: Response
 ): void => {
     let error = err;
 
@@ -31,7 +30,7 @@ export const errorHandler = (
     res.status(error.status).json({
         success: false,
         message: error.message,
-        error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        error: process.env['NODE_ENV'] === 'development' ? error.stack : undefined,
         timestamp: new Date().toISOString(),
         path: req.originalUrl
     });

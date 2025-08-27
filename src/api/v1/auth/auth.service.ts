@@ -1,6 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { IUser } from '../../../core/models/user.js';
-import { IOTP } from '../../../core/models/otp.js';
+import { type IUser } from '../../../core/models/user.js';
 import User from '../../../core/models/user.js';
 import OTP from '../../../core/models/otp.js';
 import { generateToken } from '../../../core/utils/helpers/jwt.js';
@@ -116,7 +115,7 @@ class AuthService {
         return { message: 'Password reset successfully' };
     }
 
-    async logout(userId?: string): Promise<{ message: string }> {
+    async logout(): Promise<{ message: string }> {
         // In a real application, you might want to blacklist the token
         return { message: 'Logged out successfully' };
     }

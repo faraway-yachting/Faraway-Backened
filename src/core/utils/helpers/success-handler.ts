@@ -16,8 +16,8 @@ interface SuccessResponse<T = any> {
 
 export const successHandler = <T>(
     res: Response,
+    data: T,
     message: string,
-    data?: T,
     pagination?: SuccessResponse<T>['pagination'],
     statusCode: number = 200
 ): void => {

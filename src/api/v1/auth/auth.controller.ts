@@ -1,7 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
+import { type Request, type Response, type NextFunction } from 'express';
 import AuthService from './auth.service.js';
 import { successHandler } from '../../../core/utils/helpers/success-handler.js';
-import { logger } from '../../../core/utils/logger.js';
 
 class AuthController {
     async login(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -56,7 +55,7 @@ class AuthController {
 
     async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const result = await AuthService.logout(req.user?.id);
+            const result = await AuthService.logout();
             res.clearCookie('token');
             successHandler(res, result, 'Logout successful');
         } catch (error) {

@@ -1,4 +1,4 @@
-import { logger } from '../core/utils/logger.js';
+
 
 // Simple in-memory cache implementation
 // In production, you might want to use Redis

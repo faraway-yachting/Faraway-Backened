@@ -1,4 +1,4 @@
-import { logger } from '../core/utils/logger.js';
+
 
 // Simple in-memory rate limiting
 // In production, you might want to use Redis for distributed rate limiting

@@ -1,10 +1,11 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env tsx
 
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import { User, Yacht, Blog } from '../src/core/models/index.js';
+import environmentConfig from '../src/config/environment.js';
 
-dotenv.config({ path: '.env.development' });
+// Load environment configuration
+environmentConfig();
 
 const seedData = {
     users: [
@@ -68,7 +69,11 @@ async function seedDatabase() {
         console.log('🌱 Starting database seeding...');
 
         // Connect to database
-        await mongoose.connect(process.env.MONGODB_URI);
+        const mongoURI = process.env['MONGO_URI'];
+        if (!mongoURI) {
+            throw new Error('MONGO_URI is not defined in environment variables');
+        }
+        await mongoose.connect(mongoURI);
         console.log('✅ Connected to database');
 
         // Clear existing data

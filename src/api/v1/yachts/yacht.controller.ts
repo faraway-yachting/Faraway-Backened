@@ -1,7 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
+import { type Request, type Response, type NextFunction } from 'express';
 import YachtService from './yacht.service.js';
 import { successHandler } from '../../../core/utils/helpers/success-handler.js';
-import { logger } from '../../../core/utils/logger.js';
 
 class YachtController {
     async createYacht(req: Request, res: Response, next: NextFunction): Promise<void> {

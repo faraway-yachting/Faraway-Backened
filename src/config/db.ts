@@ -9,17 +9,15 @@ const connectDB = async (): Promise<void> => {
             throw new Error('MONGO_URI is not defined in environment variables');
         }
 
-        // Production-ready MongoDB connection options
+        // Development-friendly MongoDB connection options
         const options = {
             maxPoolSize: 10, // Maximum number of connections in the pool
             serverSelectionTimeoutMS: 5000, // Timeout for server selection
             socketTimeoutMS: 45000, // Timeout for socket operations
-            bufferMaxEntries: 0, // Disable mongoose buffering
-            bufferCommands: false, // Disable mongoose buffering
             autoIndex: process.env['NODE_ENV'] === 'development', // Only build indexes in development
             retryWrites: true,
             w: 'majority' as const, // Write concern for production
-            readPreference: 'secondaryPreferred' as const // Read from secondary in production
+            readPreference: 'primary' as const // Use primary for development to allow index creation
         };
 
         await mongoose.connect(mongoURI, options);
