@@ -76,6 +76,7 @@
     "winston": "^3.17.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.34.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.6",
     "@types/cors": "^2.8.17",
@@ -91,6 +92,7 @@
     "@typescript-eslint/parser": "^8.41.0",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-security": "^3.0.1",
     "jest": "^29.7.0",
     "nodemon": "^3.1.10",
     "prettier": "^3.3.3",
