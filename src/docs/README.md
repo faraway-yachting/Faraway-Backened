@@ -95,16 +95,46 @@ src/
 ```
 
 
+
+
+
+## 🔍 Code Quality & Linting
+
+### **TypeScript Compilation Check**
+```bash
+# Check TypeScript compilation without emitting files
+npx tsc --noEmit
+
+# Check with specific config
+npx tsc --noEmit --project tsconfig.build.json
 ```
 
-## 🛠️ Available Scripts
+### **ESLint Code Quality Checks**
+```bash
+# Lint all source files
+npx eslint src/
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm start` - Start production server
-- `npm test` - Run tests
-- `npm run seed` - Seed database
-- `npm run deploy` - Deploy to production
+# Lint with max warnings allowed
+npx eslint src/ --max-warnings 10
+
+# Lint specific file
+npx eslint src/app.ts
+
+# Lint specific directory
+npx eslint src/api/
+
+# Lint with auto-fix for simple issues
+npx eslint src/ --fix
+
+# Lint only TypeScript files
+npx eslint src/ --ext .ts
+
+# Check for specific rule violations
+npx eslint src/ --rule '@typescript-eslint/no-explicit-any: error'
+```
+
+
+
 
 ## 🐳 Docker
 

@@ -1,19 +1,26 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+
+    /* Optimizations for production */
     "removeComments": true,
     "sourceMap": false,
+    "declaration": true,
     "declarationMap": false,
+    "declarationDir": "./dist/types",
+    "noEmitOnError": true,
     "incremental": true,
-    "tsBuildInfoFile": "./dist/.tsbuildinfo",
-    "assumeChangesOnlyAffectDirectDependencies": true,
-    "noEmitOnError": true
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
+  "include": ["src/**/*"],
   "exclude": [
-    "scripts/**/*",
-    "tests/**/*",
+    "node_modules",
+    "dist",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "**/*.d.ts"
+    "**/__tests__/**",
+    "scripts/**"
   ]
 }
