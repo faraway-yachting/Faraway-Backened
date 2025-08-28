@@ -1,2 +1,3 @@
 export * from './IEntity';
-export * from './IAuth';
+export * from './auth.interface';
+export * from './user.interface';

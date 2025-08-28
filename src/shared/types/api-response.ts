@@ -1,13 +1,13 @@
-export interface ApiResponse<T = any> {
+export type ApiResponse<T = any> = {
     success: boolean;
     message: string;
     data?: T;
     error?: string;
     timestamp: string;
     path: string;
-}
+};
 
-export interface PaginatedResponse<T> extends ApiResponse<T[]> {
+export type PaginatedResponse<T> = ApiResponse<T[]> & {
     pagination: {
         page: number;
         limit: number;
@@ -16,13 +16,13 @@ export interface PaginatedResponse<T> extends ApiResponse<T[]> {
         hasNext: boolean;
         hasPrev: boolean;
     };
-}
+};
 
-export interface ErrorResponse {
+export type ErrorResponse = {
     success: false;
     message: string;
     error: string;
     timestamp: string;
     path: string;
     code?: string;
-}
+};

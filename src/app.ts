@@ -39,10 +39,7 @@ app.use('/api', addPortalContext);
 // Health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
     const healthStatus = await getHealthStatus();
-    
-    // Determine HTTP status code based on health status
     const statusCode = healthStatus.status === 'unhealthy' ? 503 : 200;
-    
     res.status(statusCode).json(healthStatus);
 });
 
