@@ -1,14 +1,14 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import BlogService from './blog.service.js';
-import { successHandler } from '../../../core/utils/helpers/success-handler.js';
-import { ApiError } from '../../../core/utils/helpers/api-error.js';
+import SuccessHandler from '../../../shared/helpers/success-handler.js';
+import { ApiError } from '../../../shared/helpers/api-error.js';
 
 class BlogController {
     async createBlog(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const blogData = req.body;
             const result = await BlogService.createBlog(blogData);
-            successHandler(res, result, 'Blog created successfully');
+            SuccessHandler(result, 201, 'Blog created successfully', res);
         } catch (error) {
             next(error);
         }
@@ -22,7 +22,7 @@ class BlogController {
                 limit: Number(limit), 
                 filters 
             });
-            successHandler(res, result, 'Blogs retrieved successfully');
+            SuccessHandler(result, 200, 'Blogs retrieved successfully', res);
         } catch (error) {
             next(error);
         }
@@ -37,7 +37,7 @@ class BlogController {
             }
             
             const result = await BlogService.getBlogById(id);
-            successHandler(res, result, 'Blog retrieved successfully');
+            SuccessHandler(result, 200, 'Blog retrieved successfully', res);
         } catch (error) {
             next(error);
         }
@@ -53,7 +53,7 @@ class BlogController {
             }
             
             const result = await BlogService.updateBlog(id, updateData);
-            successHandler(res, result, 'Blog updated successfully');
+            SuccessHandler(result, 200, 'Blog updated successfully', res);
         } catch (error) {
             next(error);
         }
@@ -68,7 +68,7 @@ class BlogController {
             }
             
             const result = await BlogService.deleteBlog(id);
-            successHandler(res, result, 'Blog deleted successfully');
+            SuccessHandler(result, 200, 'Blog deleted successfully', res);
         } catch (error) {
             next(error);
         }
@@ -84,7 +84,7 @@ class BlogController {
             }
             
             const result = await BlogService.uploadBlogImage(id, file);
-            successHandler(res, result, 'Image uploaded successfully');
+            SuccessHandler(result, 200, 'Image uploaded successfully', res);
         } catch (error) {
             next(error);
         }

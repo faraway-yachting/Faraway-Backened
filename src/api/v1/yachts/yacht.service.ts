@@ -1,8 +1,8 @@
 import { IYacht } from '../../../core/models/yacht.js';
 import Yacht from '../../../core/models/yacht.js';
-import { uploadToCloudinary } from '../../../core/utils/services/cloudinary.service.js';
-import { ApiError } from '../../../core/utils/helpers/api-error.js';
-import { paginate } from '../../../core/utils/helpers/paginate.js';
+import { uploadToCloudinary } from '../../../shared/services/cloudinary.service.js';
+import { ApiError } from '../../../shared/helpers/api-error.js';
+import { paginate } from '../../../shared/helpers/paginate.js';
 
 interface YachtFilters {
     name?: string;

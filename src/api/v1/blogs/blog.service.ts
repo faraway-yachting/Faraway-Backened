@@ -1,8 +1,8 @@
 import { IBlog } from '../../../core/models/blog.js';
 import Blog from '../../../core/models/blog.js';
-import { uploadToCloudinary } from '../../../core/utils/services/cloudinary.service.js';
-import { ApiError } from '../../../core/utils/helpers/api-error.js';
-import { paginate } from '../../../core/utils/helpers/paginate.js';
+import { uploadToCloudinary } from '../../../shared/services/cloudinary.service.js';
+import { ApiError } from '../../../shared/helpers/api-error.js';
+import { paginate } from '../../../shared/helpers/paginate.js';
 
 interface BlogFilters {
     title?: string;

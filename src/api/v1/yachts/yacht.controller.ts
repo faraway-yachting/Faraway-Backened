@@ -1,13 +1,13 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import YachtService from './yacht.service.js';
-import { successHandler } from '../../../core/utils/helpers/success-handler.js';
+import SuccessHandler from '../../../shared/helpers/success-handler.js';
 
 class YachtController {
     async createYacht(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const yachtData = req.body;
             const result = await YachtService.createYacht(yachtData);
-            successHandler(res, result, 'Yacht created successfully');
+            SuccessHandler(result, 201, 'Yacht created successfully', res);
         } catch (error) {
             next(error);
         }
@@ -21,7 +21,7 @@ class YachtController {
                 limit: Number(limit), 
                 filters 
             });
-            successHandler(res, result, 'Yachts retrieved successfully');
+            SuccessHandler(result, 200, 'Yachts retrieved successfully', res);
         } catch (error) {
             next(error);
         }
@@ -35,7 +35,7 @@ class YachtController {
                 return;
             }
             const result = await YachtService.getYachtById(id);
-            successHandler(res, result, 'Yacht retrieved successfully');
+            SuccessHandler(result, 200, 'Yacht retrieved successfully', res);
         } catch (error) {
             next(error);
         }
@@ -50,7 +50,7 @@ class YachtController {
             }
             const updateData = req.body;
             const result = await YachtService.updateYacht(id, updateData);
-            successHandler(res, result, 'Yacht updated successfully');
+            SuccessHandler(result, 200, 'Yacht updated successfully', res);
         } catch (error) {
             next(error);
         }
@@ -64,7 +64,7 @@ class YachtController {
                 return;
             }
             const result = await YachtService.deleteYacht(id);
-            successHandler(res, result, 'Yacht deleted successfully');
+            SuccessHandler(result, 200, 'Yacht deleted successfully', res);
         } catch (error) {
             next(error);
         }
@@ -79,7 +79,7 @@ class YachtController {
             }
             const files = req.files as Express.Multer.File[];
             const result = await YachtService.uploadYachtImages(id, files);
-            successHandler(res, result, 'Images uploaded successfully');
+            SuccessHandler(result, 200, 'Images uploaded successfully', res);
         } catch (error) {
             next(error);
         }

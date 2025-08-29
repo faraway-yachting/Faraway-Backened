@@ -2,7 +2,7 @@ import app from './app.js';
 import http from 'http';
 import connectDB from './config/db.js';
 import environment from './config/environment.js';
-import { logger } from './core/utils/logger.js';
+import { logger } from './shared/utils/logger.js';
 
 // Server setup
 const PORT = environment.PORT;

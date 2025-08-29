@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
-import { ApiError } from '../utils/helpers/api-error.js';
+import { ApiError } from '../../shared/helpers/api-error.js';
 
 export const verifyToken = (req: Request, res: Response, next: NextFunction): void => {
   try {

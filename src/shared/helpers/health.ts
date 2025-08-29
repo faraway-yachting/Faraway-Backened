@@ -1,5 +1,5 @@
-import { checkDatabaseHealth } from '../../../config/db.js';
-import environment from '../../../config/environment.js';
+import { checkDatabaseHealth } from '../../config/db.js';
+import environment from '../../config/environment.js';
 
 export type HealthStatusType = 'healthy' | 'degraded' | 'unhealthy';
 

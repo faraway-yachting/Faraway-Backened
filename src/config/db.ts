@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { logger } from '../core/utils/logger.js';
+import { logger } from '../shared/utils/logger.js';
 import environment from './environment.js';
 
 const connectDB = async (): Promise<void> => {

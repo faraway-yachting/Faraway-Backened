@@ -1,23 +1,16 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import AuthService from './auth.service.js';
-import { successHandler } from '../../../core/utils/helpers/success-handler.js';
+import successHandler from '../../../shared/helpers/success-handler.js';
 
 class AuthController {
+    
     async login(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { email, password } = req.body;
-            const result = await AuthService.login(email, password);
-            
-            // Set JWT as HTTP-only cookie
-            (res as any).cookie('adminToken', result.token, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'strict',
-                maxAge: 24 * 60 * 60 * 1000 // 24 hours
-            });
-            
-            successHandler(res, result, 'Admin login successful');
-        } catch (error) {
+            const result = await AuthService.login(email, password);   
+            successHandler(res, result, "Admin login successful", 200);
+        }
+         catch (error) {
             next(error);
         }
     }
@@ -26,7 +19,7 @@ class AuthController {
         try {
             const { email } = req.body;
             const result = await AuthService.forgotPassword(email);
-            successHandler(res, result, 'Password reset OTP sent to admin email');
+            successHandler(res, result, 'Password reset OTP sent to admin email', 200);
         } catch (error) {
             next(error);
         }
@@ -36,7 +29,7 @@ class AuthController {
         try {
             const { email, otp } = req.body;
             const result = await AuthService.verifyOtp(email, otp);
-            successHandler(res, result, 'OTP verified successfully');
+            successHandler(res, result, 'OTP verified successfully', 200);
         } catch (error) {
             next(error);
         }
@@ -46,7 +39,7 @@ class AuthController {
         try {
             const { email, newPassword } = req.body;
             const result = await AuthService.resetPassword(email, newPassword);
-            successHandler(res, result, 'Admin password reset successfully');
+            successHandler(res, result, 'Admin password reset successfully', 200);
         } catch (error) {
             next(error);
         }
@@ -56,7 +49,7 @@ class AuthController {
         try {
             const { email } = req.body;
             const result = await AuthService.resendOtp(email);
-            successHandler(res, result, 'OTP resent to admin email');
+            successHandler(res, result, 'OTP resent to admin email', 200);
         } catch (error) {
             next(error);
         }
@@ -66,7 +59,7 @@ class AuthController {
         try {
             const result = await AuthService.logout();
             (res as any).clearCookie('adminToken');
-            successHandler(res, result, 'Admin logged out successfully');
+            successHandler(res, result, 'Admin logged out successfully', 200);
         } catch (error) {
             next(error);
         }

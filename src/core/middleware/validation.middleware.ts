@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { Schema } from 'joi';
-import { ApiError } from '../utils/helpers/api-error.js';
+import { ApiError } from '../../shared/helpers/api-error.js';
 
 export const validateRequest = (schema: Schema) => {
     return (req: Request, res: Response, next: NextFunction): void => {

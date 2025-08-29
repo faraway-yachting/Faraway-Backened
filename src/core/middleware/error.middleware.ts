@@ -1,22 +1,29 @@
-import { type Request, type Response } from 'express';
-import { logger } from '../utils/logger.js';
-import { ApiError } from '../utils/helpers/api-error.js';
+import { Request, Response } from 'express';
+import { logger } from '../../shared/utils/logger.js';
+import { ApiError } from '../../shared/helpers/api-error.js';
+import environment from '../../config/environment.js';
+
+// 🌍 detect environment
+const isDev = environment.NODE_ENV === 'development';
 
 export const errorHandler = (
-    err: any,
+    err: unknown,   
     req: Request,
-    res: Response
+    res: Response,
+    _next: any // eslint-disable-line @typescript-eslint/no-unused-vars
 ): void => {
-    let error = err;
+    let error: ApiError;
 
-    // If it's not an ApiError, convert it to one
-    if (!(err instanceof ApiError)) {
-        const statusCode = err.statusCode || err.status || 500;
-        const message = err.message || 'Internal Server Error';
-        error = new ApiError(statusCode, message, false);
+    if (err instanceof ApiError) {
+        error = err;
+    } else if (err instanceof Error) {
+        const statusCode = (err as any).statusCode || 500; // optional narrowing
+        error = new ApiError(statusCode, err.message, false);
+    } else {
+        error = ApiError.internal('Unexpected error');
     }
 
-    // Log the error
+    // 📝 Log details always
     logger.error({
         message: error.message,
         statusCode: error.status,
@@ -26,14 +33,20 @@ export const errorHandler = (
         stack: error.stack
     });
 
-    // Send error response
-    res.status(error.status).json({
+    // 🎯 Response
+    const response = {
         success: false,
-        message: error.message,
-        error: process.env['NODE_ENV'] === 'development' ? error.stack : undefined,
+        statusCode: error.status,
+        message:
+            error.isOperational || isDev
+                ? error.message
+                : 'Something went wrong, please try again later',
+        
         timestamp: new Date().toISOString(),
         path: req.originalUrl
-    });
+    };
+
+    res.status(error.status).json(response);
 };
 
 export default errorHandler;

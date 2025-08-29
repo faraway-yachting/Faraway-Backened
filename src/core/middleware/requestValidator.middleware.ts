@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ApiError } from '../utils/helpers/api-error.js';
+import { ApiError } from '../../shared/helpers/api-error.js';
 
 const requestValidator = (req: Request, res: Response, next: NextFunction): void => {
     try {

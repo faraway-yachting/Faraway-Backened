@@ -1,9 +1,10 @@
 import User from '../../../core/models/user.js';
-import { generateToken } from '../../../core/utils/helpers/jwt.js';
-import { generateOTP } from '../../../core/utils/helpers/otp.js';
-import { sendEmail } from '../../../core/utils/services/sendEmail.js';
-import { processTemplate } from '../../../core/utils/helpers/processTemplate.js';
-import { ApiError } from '../../../core/utils/helpers/api-error.js';
+import { generateToken } from '../../../shared/helpers/jwt.js';
+import { generateOTP } from '../../../shared/helpers/otp.js';
+import { sendEmail } from '../../../shared/services/sendEmail.js';
+import { processTemplate } from '../../../shared/helpers/processTemplate.js';
+import { ApiError } from '../../../shared/helpers/api-error.js';
+import environment from '@config/environment.js';
 
 interface AuthResult {
     user: {
@@ -15,15 +16,14 @@ interface AuthResult {
 }
 
 class AuthService {
+
     async login(email: string, password: string): Promise<AuthResult> {
         // Check if email matches admin email
-        const allowedAdminEmail = process.env.ADMIN_EMAIL;
-        if (!allowedAdminEmail) {
-            throw new ApiError(500, 'Admin email not configured');
-        }
+        const allowedAdminEmail = environment.ADMIN_EMAIL;
+
 
         if (email !== allowedAdminEmail) {
-            throw new ApiError(401, 'Invalid admin credentials');
+            throw ApiError.wrongCredentials('Invalid admin credentials');
         }
 
         let admin = await User.findOne({ email });
@@ -35,7 +35,7 @@ class AuthService {
 
         const isPasswordValid = await admin.comparePassword(password);
         if (!isPasswordValid) {
-            throw new ApiError(401, 'Invalid admin credentials');
+            throw ApiError.wrongCredentials('Invalid admin credentials');
         }
 
         const token = generateToken(admin._id.toString());
@@ -52,19 +52,17 @@ class AuthService {
     async forgotPassword(email: string): Promise<{ message: string }> {
         const adminEmail = process.env.ADMIN_EMAIL;
         if (!adminEmail) {
-            throw new ApiError(500, 'Admin email not configured');
+            throw ApiError.internal('Admin email not configured');
         }
 
         if (email !== adminEmail) {
-            throw new ApiError(404, 'Admin not found');
+            throw ApiError.notFound('Admin not found');
         }
 
         // Generate 4-digit OTP
         const otp = generateOTP();
         
-        // TODO: Store OTP in database/Redis with expiry
-        // For now, we'll just return success
-        
+
         // Send email with OTP
         try {
             const emailContent = await processTemplate('forgot-password', { otp });
@@ -80,11 +78,11 @@ class AuthService {
     async verifyOtp(email: string, otp: string): Promise<{ message: string }> {
         const adminEmail = process.env.ADMIN_EMAIL;
         if (!adminEmail) {
-            throw new ApiError(500, 'Admin email not configured');
+            throw ApiError.internal('Admin email not configured');
         }
 
         if (email !== adminEmail) {
-            throw new ApiError(404, 'Admin not found');
+            throw ApiError.notFound('Admin not found');
         }
 
         // TODO: Verify OTP from database/Redis
@@ -99,15 +97,15 @@ class AuthService {
     async resetPassword(email: string, newPassword: string): Promise<{ message: string }> {
         const admin = await User.findOne({ email });
         if (!admin) {
-            throw new ApiError(404, 'Admin not found');
+            throw ApiError.notFound('Admin not found');
         }
 
         if (!admin.otpVerified) {
-            throw new ApiError(403, 'OTP not verified');
+            throw ApiError.forbidden('OTP not verified');
         }
 
         if (!newPassword || newPassword.length < 6) {
-            throw new ApiError(400, 'Password must be at least 6 characters');
+            throw ApiError.badRequest('Password must be at least 6 characters');
         }
 
         // Update password (will be hashed automatically by pre-save hook)
@@ -121,11 +119,11 @@ class AuthService {
     async resendOtp(email: string): Promise<{ message: string }> {
         const adminEmail = process.env.ADMIN_EMAIL;
         if (!adminEmail) {
-            throw new ApiError(500, 'Admin email not configured');
+            throw ApiError.internal('Admin email not configured');
         }
 
         if (email !== adminEmail) {
-            throw new ApiError(404, 'Admin not found');
+            throw ApiError.notFound('Admin not found');
         }
 
         // Generate new OTP

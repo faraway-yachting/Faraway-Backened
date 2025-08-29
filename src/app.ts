@@ -4,7 +4,7 @@ import cookieParser from 'cookie-parser';
 
 import { requestValidator, errorHandler, addPortalContext } from './core/middleware/index.js';
 import { rateLimitMiddleware } from './config/rate-limit.js';
-import { getHealthStatus } from './core/utils/helpers/health.js';
+import { getHealthStatus } from './shared/helpers/health.js';
 import apiRoutes from './api/index.js';
 import environment from './config/environment.js';
 
