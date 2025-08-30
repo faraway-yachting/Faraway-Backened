@@ -4,11 +4,11 @@ import os from 'os';
 import fs from 'fs';
 
 const tempRoot = path.join(os.tmpdir(), 'uploads', 'Faraway');
-console.log('📂 Temp root directory:', tempRoot);
+// Temp directory logging removed for security
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    console.log('📁 Processing file:', file.fieldname, file.originalname);
+    // File processing logging removed for security
     let subfolder = '';
     
     // Handle yacht images
@@ -21,14 +21,12 @@ const storage = multer.diskStorage({
     else if (file.fieldname === 'image') {
       subfolder = path.join('blogs', 'images');
     } else {
-      console.log('❌ Unexpected field name:', file.fieldname);
+      // Unexpected field logging removed for security
       return cb(new Error('Unexpected upload field: ' + file.fieldname), null);
     }
     
     const dest = path.join(tempRoot, subfolder);
-    console.log('📂 Creating directory:', dest);
     fs.mkdirSync(dest, { recursive: true }); // Ensure the folder exists
-    console.log('✅ Directory created/verified:', dest);
     cb(null, dest);
   },
   filename: function (req, file, cb) {
@@ -39,8 +37,7 @@ const storage = multer.diskStorage({
     const uniqueId = Math.random().toString(36).substring(2, 15);
     const finalName = Date.now() + '-' + cleanFieldName + '-' + uniqueId + ext;
     
-    console.log('📝 Generated filename:', finalName);
-    console.log('📁 Temp root directory:', tempRoot);
+    // Filename generation logging removed for security
     cb(null, finalName);
   },
 });
@@ -63,7 +60,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  limits: { fileSize: 12 * 1024 * 1024 }, // 10MB max
 });
 
 export default upload;

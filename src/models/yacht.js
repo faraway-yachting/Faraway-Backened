@@ -32,6 +32,7 @@ const yachtSchema = new mongoose.Schema({
   fuelCapacity: { type: String },
   waterCapacity: { type: String },
   code: { type: String },
+  tag: { type: String }, // e.g., Luxury, Premium, Standard
   slug: {
     type: String,
     unique: true,
@@ -48,5 +49,18 @@ const yachtSchema = new mongoose.Schema({
     default: 'draft'
   },
   createdAt: { type: Date, default: Date.now }
+}, {
+  timestamps: true
 });
+
+// Add indexes for better query performance
+yachtSchema.index({ status: 1, createdAt: -1 }); // For getAllYachts with status filter
+// Helpful for recently updated sorts
+yachtSchema.index({ updatedAt: -1 });
+// slug already has unique: true above; avoid duplicate index definitions
+yachtSchema.index({ type: 1 }); // For type-based queries
+yachtSchema.index({ boatType: 1 }); // For boat type filtering
+yachtSchema.index({ price: 1 }); // For price-based queries
+yachtSchema.index({ tag: 1 }); // For tag-based filtering
+
 export default mongoose.model('Yacht', yachtSchema);

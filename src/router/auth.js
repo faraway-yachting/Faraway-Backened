@@ -3,8 +3,7 @@ import auth from '../controllers/authController.js';
 
 const router = express.Router();
 
-
-// Admin-only routes
+// Admin routes
 router.post('/admin/login', auth.adminLogin);
 router.post('/admin/forgot-password', auth.adminForgotPassword);
 router.post('/admin/verify-otp', auth.adminVerifyOtp);
