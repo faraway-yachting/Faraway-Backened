@@ -1,7 +1,7 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import AuthService from './auth.service.js';
-import successHandler from '../../../shared/helpers/success-handler.js';
-import { errorConstants } from '../../../shared/utils/constants/index.js';
+import successHandler from '@helpers/success-handler.js';
+import { errorConstants } from '@utils/error.codes.js';
 
 class AuthController {
     

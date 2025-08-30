@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
-import { logger } from '../../shared/utils/logger.js';
-import { ApiError } from '../../shared/helpers/api-error.js';
-import { errorConstants } from '../../shared/utils/constants/index.js';
-import environment from '../../config/environment.js';
+import { logger } from '@utils/logger.js';
+import { ApiError } from '@helpers/api-error.js';
+import { errorConstants } from '@utils/error.codes.js';
+import environment from '@config/environment.js';
 
 // 🌍 detect environment
 const isDev = environment.NODE_ENV === 'development';
@@ -11,14 +11,14 @@ export const errorHandler = (
     err: unknown,   
     req: Request,
     res: Response,
-    _next: any // eslint-disable-line @typescript-eslint/no-unused-vars
+    _next: unknown // eslint-disable-line @typescript-eslint/no-unused-vars
 ): void => {
     let error: ApiError;
 
     if (err instanceof ApiError) {
         error = err;
     } else if (err instanceof Error) {
-        const statusCode = (err as any).statusCode || 500; // optional narrowing
+        const statusCode = (err as { statusCode?: number }).statusCode || 500; 
         error = new ApiError(statusCode, err.message, false);
     } else {
         error = ApiError.internal(errorConstants.GENERAL.INTERNAL_SERVER_ERROR);

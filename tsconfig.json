@@ -14,13 +14,21 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
 
-    /* === Path Aliases (optional, remove if unused) === */
+    /* === Path Aliases === */
     "baseUrl": "./src",
     "paths": {
+      "@/*": ["*"],
       "@config/*": ["config/*"],
-      "@utils/*": ["utils/*"],
-      "@models/*": ["models/*"],
-      "@services/*": ["services/*"]
+      "@core/*": ["core/*"],
+      "@api/*": ["api/*"],
+      "@shared/*": ["shared/*"],
+      "@utils/*": ["shared/utils/*"],
+      "@middleware/*": ["core/middleware/*"],
+      "@validators/*": ["core/validators/*"],
+      "@models/*": ["core/models/*"],
+      "@services/*": ["shared/services/*"],
+      "@helpers/*": ["shared/helpers/*"],
+      "@interfaces/*": ["shared/interfaces/*"]
     },
 
     /* === Modern Interop === */

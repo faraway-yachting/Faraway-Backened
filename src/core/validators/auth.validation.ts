@@ -1,89 +1,66 @@
-import { Request, Response, NextFunction } from 'express';
 import Joi from 'joi';
+import errorConstants from '../../shared/utils/error.codes.js';
 
-export const validateLogin = (req: Request, res: Response, next: NextFunction): void => {
-    const schema = Joi.object({
-        email: Joi.string().email().required(),
-        password: Joi.string().min(6).required()
-    });
+const emailSchema = Joi.string().email().required().messages({
+  'string.base': errorConstants.AUTHENTICATION.EMAIL_MUST_BE_STRING,
+  'string.email': errorConstants.AUTHENTICATION.EMAIL_INVALID,
+  'any.required': errorConstants.AUTHENTICATION.EMAIL_REQUIRED,
+});
 
-    const { error } = schema.validate(req.body);
-    if (error?.details?.[0]?.message) {
-        res.status(400).json({
-            success: false,
-            message: error.details[0].message
-        });
-        return;
-    }
-    next();
-};
+const passwordSchema = Joi.string().required().messages({
+  'string.base': errorConstants.AUTHENTICATION.PASSWORD_MUST_BE_STRING,
+  'string.empty': errorConstants.AUTHENTICATION.PASSWORD_REQUIRED,
+  'any.required': errorConstants.AUTHENTICATION.PASSWORD_REQUIRED,
+});
 
-export const validateRegister = (req: Request, res: Response, next: NextFunction): void => {
-    const schema = Joi.object({
-        name: Joi.string().min(2).max(50).required(),
-        email: Joi.string().email().required(),
-        password: Joi.string().min(6).required(),
-        phone: Joi.string().pattern(/^\+?[\d\s-]+$/).required()
-    });
+const otpSchema = Joi.string()
+  .trim()
+  .length(4)
+  .pattern(/^[0-9]+$/)
+  .required()
+  .messages({
+    'string.base':
+      errorConstants.AUTHENTICATION.OTP_MUST_BE_STRING ||
+      'OTP must be a string',
+    'string.length':
+      errorConstants.AUTHENTICATION.OTP_INVALID_LENGTH ||
+      'OTP must be 4 digits',
+    'string.pattern.base':
+      errorConstants.AUTHENTICATION.OTP_INVALID_FORMAT ||
+      'OTP must contain only digits',
+    'string.empty':
+      errorConstants.AUTHENTICATION.OTP_REQUIRED || 'OTP is required',
+    'any.required':
+      errorConstants.AUTHENTICATION.OTP_REQUIRED || 'OTP is required',
+  });
 
-    const { error } = schema.validate(req.body);
-    if (error?.details?.[0]?.message) {
-        res.status(400).json({
-            success: false,
-            message: error.details[0].message
-        });
-        return;
-    }
-    next();
-};
+const adminLoginSchema = Joi.object({
+  email: emailSchema,
+  password: passwordSchema,
+});
 
-export const validateForgotPassword = (req: Request, res: Response, next: NextFunction): void => {
-    const schema = Joi.object({
-        email: Joi.string().email().required()
-    });
+const adminForgotPasswordSchema = Joi.object({
+  email: emailSchema,
+});
 
-    const { error } = schema.validate(req.body);
-    if (error?.details?.[0]?.message) {
-        res.status(400).json({
-            success: false,
-            message: error.details[0].message
-        });
-        return;
-    }
-    next();
-};
+const adminVerifyOtpSchema = Joi.object({
+  email: emailSchema,
+  otp: otpSchema,
+});
 
-export const validateOtp = (req: Request, res: Response, next: NextFunction): void => {
-    const schema = Joi.object({
-        email: Joi.string().email().required(),
-        otp: Joi.string().length(6).pattern(/^\d+$/).required()
-    });
+const adminResetPasswordSchema = Joi.object({
+  email: emailSchema,
+  newPassword: passwordSchema,
+});
 
-    const { error } = schema.validate(req.body);
-    if (error?.details?.[0]?.message) {
-        res.status(400).json({
-            success: false,
-            message: error.details[0].message
-        });
-        return;
-    }
-    next();
-};
+const adminResendOtpSchema = Joi.object({
+  email: emailSchema,
+});
 
-export const validateResetPassword = (req: Request, res: Response, next: NextFunction): void => {
-    const schema = Joi.object({
-        email: Joi.string().email().required(),
-        otp: Joi.string().length(6).pattern(/^\d+$/).required(),
-        newPassword: Joi.string().min(6).required()
-    });
-
-    const { error } = schema.validate(req.body);
-    if (error?.details?.[0]?.message) {
-        res.status(400).json({
-            success: false,
-            message: error.details[0].message
-        });
-        return;
-    }
-    next();
+export {
+  adminLoginSchema,
+  adminForgotPasswordSchema,
+  adminVerifyOtpSchema,
+  adminResetPasswordSchema,
+  adminResendOtpSchema,
 };

@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { errorConstants } from "../utils/constants/index.js";
+import { errorConstants } from "@utils/error.codes.js";
 
 /**
  * 🔹 Base structure for all responses

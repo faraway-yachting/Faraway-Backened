@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
 import { ApiError } from '../../shared/helpers/api-error.js';
+import { errorConstants } from '../../shared/utils/error.codes.js';
 
 export const verifyToken = (req: Request, res: Response, next: NextFunction): void => {
   try {
@@ -8,19 +9,18 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction): vo
 
     if (!token) {
       return next(
-        new ApiError(401, 'Token missing')
+        ApiError.unauthorized(errorConstants.GENERAL.INVALID_TOKEN)
       );
     }
 
-    const decoded = jwt.verify(token, process.env['JWT_SECRET']!) as any;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || '') as any;
 
     req.user = decoded; // e.g. { _id: ..., email: ..., etc }
     next();
   } catch (err: any) {
     return next(
-      new ApiError(
-        403,
-        err.message || 'Invalid token'
+      ApiError.forbidden(
+        err.message || errorConstants.GENERAL.INVALID_TOKEN
       )
     );
   }
