@@ -5,14 +5,7 @@ import { ApiError } from '../../../shared/helpers/api-error.js';
 import { errorConstants } from '@utils/error.codes.js';
 import environment from '@config/environment.js';
 
-interface AuthResult {
-    user: {
-        id: string;
-        email: string;
-        otpVerified: boolean;
-    };
-    token: string;
-}
+import { AuthResult } from './auth.types.js';
 
 class AuthService {
 
