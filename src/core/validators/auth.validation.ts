@@ -13,25 +13,12 @@ const passwordSchema = Joi.string().required().messages({
   'any.required': errorConstants.AUTHENTICATION.PASSWORD_REQUIRED,
 });
 
-const otpSchema = Joi.string()
-  .trim()
-  .length(4)
-  .pattern(/^[0-9]+$/)
-  .required()
-  .messages({
-    'string.base':
-      errorConstants.AUTHENTICATION.OTP_MUST_BE_STRING ||
-      'OTP must be a string',
-    'string.length':
-      errorConstants.AUTHENTICATION.OTP_INVALID_LENGTH ||
-      'OTP must be 4 digits',
-    'string.pattern.base':
-      errorConstants.AUTHENTICATION.OTP_INVALID_FORMAT ||
-      'OTP must contain only digits',
-    'string.empty':
-      errorConstants.AUTHENTICATION.OTP_REQUIRED || 'OTP is required',
-    'any.required':
-      errorConstants.AUTHENTICATION.OTP_REQUIRED || 'OTP is required',
+const otpSchema = Joi.string().trim().length(4).pattern(/^[0-9]+$/).required().messages({
+    'string.base':  errorConstants.AUTHENTICATION.OTP_MUST_BE_STRING ,
+    'string.length':  errorConstants.AUTHENTICATION.OTP_INVALID_LENGTH ,
+    'string.pattern.base':errorConstants.AUTHENTICATION.OTP_INVALID_FORMAT ,
+    'string.empty':errorConstants.AUTHENTICATION.OTP_REQUIRED ,
+    'any.required':   errorConstants.AUTHENTICATION.OTP_REQUIRED ,
   });
 
 const adminLoginSchema = Joi.object({

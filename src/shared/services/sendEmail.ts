@@ -1,4 +1,8 @@
 import nodemailer from 'nodemailer';
+import { ApiError } from '@helpers/api-error.js';
+import { errorConstants } from '@utils/error.codes.js';
+import { logger } from '@utils/logger.js';
+import environment from '@config/environment.js';
 
 interface EmailOptions {
     to: string;
@@ -8,11 +12,18 @@ interface EmailOptions {
 
 export const sendEmail = async (options: EmailOptions): Promise<void> => {
     try {
-        const senderEmail = process.env['SENDER_EMAIL'];
-        const senderPassword = process.env['SENDER_PASSWORD'];
+        const senderEmail = environment.SENDER_EMAIL;
+        const senderPassword = environment.SMTP_PASS;
 
         if (!senderEmail || !senderPassword) {
-            throw new Error('Email configuration is incomplete');
+            logger.error('Email configuration missing', { 
+                hasEmail: !!senderEmail, 
+                hasPassword: !!senderPassword 
+            });
+            throw new ApiError(
+                500,
+                'Email service not configured'
+            );
         }
 
         const transporter = nodemailer.createTransport({
@@ -31,10 +42,24 @@ export const sendEmail = async (options: EmailOptions): Promise<void> => {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log('Email sent successfully');
-    } catch (error) {
-        console.error('Error sending email:', error);
-        throw new Error('Failed to send email');
+        logger.info('Email sent successfully', { to: options.to, subject: options.subject });
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown email error';
+        logger.error('Failed to send email', { 
+            error: errorMessage, 
+            to: options.to, 
+            subject: options.subject,
+            stack: error instanceof Error ? error.stack : undefined
+        });
+        
+        if (error instanceof ApiError) {
+            throw error;
+        }
+        
+        throw new ApiError(
+            500,
+            errorConstants.EXTERNAL_SERVICE.EMAIL_SEND_FAILED || 'Failed to send email'
+        );
     }
 };
 

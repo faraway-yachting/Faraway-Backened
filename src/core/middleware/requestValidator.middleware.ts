@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { ApiError } from '../../shared/helpers/api-error.js';
-import { validationSchemas } from '../validators/index.js';
-import { errorConstants } from '../../shared/utils/error.codes.js';
-import { logger } from '../../shared/utils/logger.js';
+import { ApiError } from '@helpers/api-error.js';
+import { validationSchemas } from '@validators/index.js';
+import { errorConstants } from '@utils/error.codes.js';
+import { logger } from '@utils/logger.js';
 
 const requestValidator = (req: Request, res: Response, next: NextFunction): void => {
     try {
@@ -53,7 +53,7 @@ const requestValidator = (req: Request, res: Response, next: NextFunction): void
 
         if (error) {
             logger.error(`Joi validation error in route ${method} ${matchedRoute}:`);
-            error.details.forEach((detail: any) => {
+            error.details.forEach((detail) => {
                 logger.error(`  - ${detail.path.join('.')}: ${detail.message}`);
             });
 
@@ -62,10 +62,11 @@ const requestValidator = (req: Request, res: Response, next: NextFunction): void
 
         logger.debug(`Request body passed validation for ${method} ${matchedRoute}`);
         next();
-    } catch (err: any) {
-        logger.error(`Uncaught validation middleware error: ${err.message}`);
+    } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown validation error';
+        logger.error(`Uncaught validation middleware error: ${errorMessage}`);
         return next(
-            ApiError.forbidden(err.message || errorConstants.GENERAL.VALIDATION_ERROR)
+            ApiError.forbidden(errorMessage || errorConstants.GENERAL.VALIDATION_ERROR)
         );
     }
 };

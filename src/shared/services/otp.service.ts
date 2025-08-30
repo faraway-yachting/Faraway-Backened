@@ -1,8 +1,8 @@
 import crypto from 'crypto';
-import Otp from '../../core/models/otp.js';
+import Otp from '@core/models/otp.js';
 import { sendEmail } from './sendEmail.js';
-import { processTemplate } from '../helpers/processTemplate.js';
-import { logger } from '../utils/logger.js';
+import { processTemplate } from '@helpers/processTemplate.js';
+import { logger } from '@utils/logger.js';
 import { errorConstants } from '@utils/error.codes.js';
 
 interface OtpResult {
