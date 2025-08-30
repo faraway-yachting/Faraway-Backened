@@ -8,15 +8,6 @@ export interface AuthResult {
     token: string;
 }
 
-export interface AdminUser {
-    id: string;
-    email: string;
-    password: string;
-    otpVerified: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-}
-
 export interface LoginCredentials {
     email: string;
     password: string;
@@ -34,4 +25,8 @@ export interface VerifyOtpRequest {
 export interface ResetPasswordRequest {
     email: string;
     newPassword: string;
+}
+
+export interface ResendOtpRequest {
+    email: string;
 }

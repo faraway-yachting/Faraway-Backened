@@ -7,6 +7,11 @@ import environment from '@config/environment.js';
 
 import { AuthResult } from './auth.types.js';
 
+// Response types for better consistency
+interface MessageResponse {
+    message: string;
+}
+
 class AuthService {
 
     async login(email: string, password: string): Promise<AuthResult> {
@@ -40,7 +45,7 @@ class AuthService {
         };
     }
 
-    async forgotPassword(email: string): Promise<{ message: string }> {
+    async forgotPassword(email: string): Promise<MessageResponse> {
         this.validateAdminEmail(email);
 
         // Use OTP service to generate and send OTP
@@ -53,7 +58,7 @@ class AuthService {
         return { message: result.message };
     }
 
-    async verifyOtp(email: string, otp: string): Promise<{ message: string }> {
+    async verifyOtp(email: string, otp: string): Promise<MessageResponse> {
         this.validateAdminEmail(email);
 
         // Use OTP service to verify OTP
@@ -69,7 +74,7 @@ class AuthService {
         return { message: result.message };
     }
 
-    async resetPassword(email: string, newPassword: string): Promise<{ message: string }> {
+    async resetPassword(email: string, newPassword: string): Promise<MessageResponse> {
         const admin = await User.findOne({ email });
         if (!admin) {
             throw ApiError.notFound(errorConstants.AUTHENTICATION.ADMIN_NOT_FOUND);
@@ -91,7 +96,7 @@ class AuthService {
         return { message: errorConstants.SUCCESS.PASSWORD_RESET_SUCCESS };
     }
 
-    async resendOtp(email: string): Promise<{ message: string }> {
+    async resendOtp(email: string): Promise<MessageResponse> {
         this.validateAdminEmail(email);
 
         // Clear any existing OTP first
@@ -107,7 +112,7 @@ class AuthService {
         return { message: result.message };
     }
 
-    async logout(): Promise<{ message: string }> {
+    async logout(): Promise<MessageResponse> {
         // In a real application, you might want to blacklist the token
         return { message: errorConstants.SUCCESS.ADMIN_LOGOUT_SUCCESS };
     }
