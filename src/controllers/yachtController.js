@@ -1,10 +1,12 @@
 import Yacht from '../models/yacht.js';
 import SuccessHandler from '../utils/SuccessHandler.js';
 import ApiError from '../utils/ApiError.js';
-import mapImageFilenamesToUrls from '../utils/mapImageFilenamesToUrls.js';
+
 import { getYachtByIdSchema, addyachtSchema, editYachtSchema } from '../validations/yacht.validation.js';
 import paginate from '../utils/paginate.js';
 import { uploadToCloudinary } from '../utils/cloudinaryUtil.js';
+import mapImageFilenamesToUrls from '../utils/mapImageFilenamesToUrls.js';
+import { clearYachtCache } from '../utils/cache.js';
 
 
 // Add a new yacht
@@ -28,8 +30,7 @@ export const addYacht = async (req, res, next) => {
           return next(new ApiError(`Primary image file size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum allowed size of 10MB`, 400));
         }
         
-        console.log(`📸 Uploading primary image: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
-        console.log(`📁 File path: ${file.path}`);
+        console.log(`📸 Uploading primary image: ${file.originalname}`);
         
         // Small delay to ensure file is fully written
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -38,26 +39,22 @@ export const addYacht = async (req, res, next) => {
         const fs = await import('fs/promises');
         try {
           await fs.access(file.path);
-          console.log('✅ Primary image file exists and is accessible');
-          
           // Get file stats to verify it's not empty
           const stats = await fs.stat(file.path);
-          console.log(`📊 File size: ${stats.size} bytes`);
           
           if (stats.size === 0) {
             return next(new ApiError('Primary image file is empty', 400));
           }
         } catch (accessError) {
-          console.error('❌ Primary image file does not exist:', file.path);
-          console.error('❌ Access error:', accessError.message);
-          return next(new ApiError(`Primary image file not found: ${file.path}`, 500));
+          console.error('❌ Primary image file access error');
+          return next(new ApiError('Primary image file not found', 500));
         }
         
-        yachtData.primaryImage = await uploadToCloudinary(file.path, 'Faraway/yachts/primaryImage');
-        console.log(`✅ Primary image uploaded successfully: ${yachtData.primaryImage}`);
+        yachtData.primaryImage = await uploadToCloudinary(file.path, 'yachts/primaryImage');
+        console.log('✅ Primary image uploaded successfully');
       } catch (uploadError) {
-        console.error(`❌ Primary image upload failed:`, uploadError);
-        return next(new ApiError(`Failed to upload primary image: ${uploadError.message}`, 400));
+        console.error('❌ Primary image upload failed');
+        return next(new ApiError('Failed to upload primary image', 400));
       }
     }
 
@@ -67,8 +64,7 @@ export const addYacht = async (req, res, next) => {
       ...(req.files?.['galleryImages[]'] || []),
     ];
     
-    console.log('🖼️ Gallery images found:', galleryImageFiles.length);
-    console.log('📁 Gallery image files:', galleryImageFiles.map(f => ({ path: f.path, fieldname: f.fieldname, originalname: f.originalname })));
+    console.log(`🖼️ Gallery images found: ${galleryImageFiles.length}`);
     
     if (galleryImageFiles.length > 0) {
       yachtData.galleryImages = [];
@@ -80,25 +76,23 @@ export const addYacht = async (req, res, next) => {
               return next(new ApiError(`Gallery image file size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum allowed size of 10MB`, 400));
             }
             
-            console.log(`📸 Uploading gallery image: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+            console.log(`📸 Uploading gallery image: ${file.originalname}`);
             
             // Check if file exists
             const fs = await import('fs/promises');
             try {
               await fs.access(file.path);
-              console.log('✅ Gallery image file exists:', file.path);
             } catch (accessError) {
-              console.error('❌ Gallery image file does not exist:', file.path);
-              console.error('❌ Access error:', accessError.message);
-              return next(new ApiError(`Gallery image file not found: ${file.path}`, 500));
+              console.error('❌ Gallery image file access error');
+              return next(new ApiError('Gallery image file not found', 500));
             }
             
-            const url = await uploadToCloudinary(file.path, 'Faraway/yachts/galleryImages');
+            const url = await uploadToCloudinary(file.path, 'yachts/galleryImages');
             yachtData.galleryImages.push(url);
-            console.log('✅ Gallery image uploaded successfully:', url);
+            console.log('✅ Gallery image uploaded successfully');
           } catch (uploadError) {
-            console.error('❌ Gallery image upload failed:', uploadError);
-            return next(new ApiError(`Failed to upload gallery image: ${uploadError.message}`, 400));
+            console.error('❌ Gallery image upload failed');
+            return next(new ApiError('Failed to upload gallery image', 400));
           }
         }
     }
@@ -109,10 +103,24 @@ export const addYacht = async (req, res, next) => {
       return next(new ApiError(error.details[0].message, 400));
     }
 
+    // Enforce slug uniqueness (if provided)
+    if (yachtData.slug) {
+      const existingSlug = await Yacht.findOne({ slug: yachtData.slug }).lean().exec();
+      if (existingSlug) {
+        return next(new ApiError('Yacht with this slug already exists', 409));
+      }
+    }
+
     const newYacht = await Yacht.create(yachtData);
-    const yachtWithImageUrls = mapImageFilenamesToUrls(newYacht, req);
-    return SuccessHandler(yachtWithImageUrls, 201, 'Yacht added successfully', res);
+    // Invalidate caches so lists reflect the new yacht
+    await clearYachtCache();
+    // Map image filenames to URLs and return new yacht
+    const yachtWithUrls = mapImageFilenamesToUrls(newYacht, req);
+    return SuccessHandler(yachtWithUrls, 201, 'Yacht added successfully', res);
   } catch (err) {
+    if (err && err.code === 11000 && (err.keyPattern?.slug || err.keyValue?.slug)) {
+      return next(new ApiError('Yacht with this slug already exists', 409));
+    }
     next(new ApiError(err.message, 400));
   }
 };
@@ -129,18 +137,37 @@ export const getAllYachts = async (req, res, next) => {
       filter.status = status;
     }
 
-    const yachts = await Yacht.find(filter).sort({ createdAt: -1 }).skip(skip).limit(parsedLimit);
-    const total = await Yacht.countDocuments(filter);
+    // Use Promise.all for parallel execution
+    const [yachts, total, recentlyUpdated] = await Promise.all([
+      Yacht.find(filter)
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .lean()
+        .exec(), // Use exec() for better performance
+      Yacht.countDocuments(filter).exec(),
+      // Recently updated (last 5)
+      Yacht.find(filter)
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .limit(5)
+        .lean()
+        .exec()
+    ]);
 
+    // Map image filenames to URLs and return yachts
     const yachtsWithUrls = mapImageFilenamesToUrls(yachts, req);
+    
+    const response = {
+      yachts: yachtsWithUrls,
+      page: Number(page),
+      limit: parsedLimit,
+      total,
+      totalPages: Math.ceil(total / parsedLimit),
+      recentlyUpdated
+    };
+
     return SuccessHandler(
-      {
-        yachts: yachtsWithUrls,
-        page: Number(page),
-        limit: parsedLimit,
-        total,
-        totalPages: Math.ceil(total / parsedLimit)
-      },
+      response,
       200,
       'Yachts fetched successfully',
       res
@@ -156,17 +183,23 @@ export const getYachtById = async (req, res, next) => {
     // Validate the query using Joi
     const { error } = getYachtByIdSchema.validate(req.query);
     if (error) {
-      // You can use your ApiError class for consistency
       return next(new ApiError(error.details[0].message, 400));
     }
 
     const { id } = req.query;
-    const yacht = await Yacht.findById(id);
+    
+    // Use lean() for better performance and select only needed fields
+    const yacht = await Yacht.findById(id)
+      .lean()
+      .exec();
+      
     if (!yacht) {
       return next(new ApiError('Yacht not found', 404));
     }
-    const yachtWithUrl = mapImageFilenamesToUrls(yacht, req);
-    return SuccessHandler(yachtWithUrl, 200, 'Yacht fetched successfully', res);
+    
+    // Map image filenames to URLs and return yacht
+    const yachtWithUrls = mapImageFilenamesToUrls(yacht, req);
+    return SuccessHandler(yachtWithUrls, 200, 'Yacht fetched successfully', res);
   } catch (err) {
     next(new ApiError(err.message, 400));
   }
@@ -184,6 +217,8 @@ export const deleteYacht = async (req, res, next) => {
     if (!yacht) {
       return next(new ApiError('Yacht not found', 404));
     }
+    // Invalidate caches after delete
+    await clearYachtCache();
     return SuccessHandler(null, 200, 'Yacht deleted successfully', res);
   } catch (err) {
     next(new ApiError(err.message, 400));
@@ -245,6 +280,14 @@ export const editYacht = async (req, res, next) => {
       return next(new ApiError(validationError.details[0].message, 400));
     }
 
+    // If slug is being changed, ensure uniqueness
+    if (yachtData.slug && yachtData.slug !== existingYacht.slug) {
+      const slugExists = await Yacht.findOne({ slug: yachtData.slug, _id: { $ne: id } }).lean().exec();
+      if (slugExists) {
+        return next(new ApiError('Yacht with this slug already exists', 409));
+      }
+    }
+
     // Update the yacht
     const updatedYacht = await Yacht.findByIdAndUpdate(
       id,
@@ -252,9 +295,15 @@ export const editYacht = async (req, res, next) => {
       { new: true, runValidators: true }
     );
 
-    const yachtWithImageUrls = mapImageFilenamesToUrls(updatedYacht, req);
-    return SuccessHandler(yachtWithImageUrls, 200, 'Yacht updated successfully', res);
+    // Invalidate caches after edit
+    await clearYachtCache();
+    // Map image filenames to URLs and return updated yacht
+    const yachtWithUrls = mapImageFilenamesToUrls(updatedYacht, req);
+    return SuccessHandler(yachtWithUrls, 200, 'Yacht updated successfully', res);
   } catch (err) {
+    if (err && err.code === 11000 && (err.keyPattern?.slug || err.keyValue?.slug)) {
+      return next(new ApiError('Yacht with this slug already exists', 409));
+    }
     next(new ApiError(err.message, 400));
   }
 };
@@ -289,9 +338,12 @@ export const updateYachtStatus = async (req, res, next) => {
       { new: true, runValidators: true }
     );
 
-    const yachtWithImageUrls = mapImageFilenamesToUrls(updatedYacht, req);
+    // Invalidate caches after status change
+    await clearYachtCache();
+    // Map image filenames to URLs and return updated yacht
+    const yachtWithUrls = mapImageFilenamesToUrls(updatedYacht, req);
     return SuccessHandler(
-      yachtWithImageUrls, 
+      yachtWithUrls, 
       200, 
       `Yacht ${status === 'published' ? 'published' : 'unpublished'} successfully`, 
       res

@@ -145,57 +145,8 @@ const deleteYachtSchema = Joi.object({
   })
 });
 
-// Edit yacht schema - all fields are optional for partial updates
-const editYachtSchema = Joi.object({
-  boatType: Joi.string().optional().messages({
-    'string.base': 'Boat type must be a string',
-  }),
-  title: Joi.string().optional().messages({
-    'string.base': 'Title must be a string',
-  }),
-  price: Joi.string().optional(),
-  capacity: Joi.string().optional(),
-  length: Joi.string().allow('').optional(),
-  lengthRange: Joi.string().allow('').optional(),
-  cabins: Joi.string().optional(),
-  bathrooms: Joi.string().optional(),
-  passengerDayTrip: Joi.string().optional(),
-  passengerOvernight: Joi.string().optional(),
-  guests: Joi.string().optional(),
-  guestsRange: Joi.string().optional(),
-  dayTripPrice: Joi.string().optional(),
-  overnightPrice: Joi.string().optional(),
-  daytripPriceEuro: Joi.string().allow('').optional(),
-  primaryImage: Joi.string().optional(),
-  galleryImages: Joi.array().items(Joi.string()).optional(),
-  dayCharter: Joi.string().allow('').optional(),
-  overnightCharter: Joi.string().allow('').optional(),
-  aboutThisBoat: Joi.string().allow('').optional(),
-  specifications: Joi.string().allow('').optional(),
-  boatLayout: Joi.string().allow('').optional(),
-  videoLink: Joi.string().optional(),
-  badge: Joi.string().allow('').optional(),
-  design: Joi.string().optional(),
-  built: Joi.string().optional(),
-  cruisingSpeed: Joi.string().optional(),
-  lengthOverall: Joi.string().optional(),
-  fuelCapacity: Joi.string().optional(),
-  waterCapacity: Joi.string().optional(),
-  code: Joi.string().allow('').optional(),
-  slug: Joi.string().allow('').optional(),
-  type: Joi.string()
-    .valid('crewed', 'bareboat')
-    .optional()
-    .messages({
-      'any.only': 'Yacht type must be either crewed or bareboat',
-    }),
-  status: Joi.string()
-    .valid('draft', 'published')
-    .optional()
-    .messages({
-      'any.only': 'Status must be either draft or published',
-    }),
-});
+// Edit yacht schema - exactly same as add (full payload required)
+const editYachtSchema = addyachtSchema;
 
 // Status update validation schema
 const updateStatusSchema = Joi.object({
