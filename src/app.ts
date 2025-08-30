@@ -30,8 +30,8 @@ app.use(express.json());
 // Rate limiting (always enabled for security)
 app.use('/api', rateLimitMiddleware());
 
-// Request validation middleware
-app.use(requestValidator);
+// Request validation middleware - apply BEFORE routes for API paths only
+app.use('/api', requestValidator);
 
 // Portal context middleware (adds portal info to requests)
 app.use('/api', addPortalContext);
