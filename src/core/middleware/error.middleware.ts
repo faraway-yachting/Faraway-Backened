@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { logger } from '../../shared/utils/logger.js';
 import { ApiError } from '../../shared/helpers/api-error.js';
+import { errorConstants } from '../../shared/utils/constants/index.js';
 import environment from '../../config/environment.js';
 
 // 🌍 detect environment
@@ -20,7 +21,7 @@ export const errorHandler = (
         const statusCode = (err as any).statusCode || 500; // optional narrowing
         error = new ApiError(statusCode, err.message, false);
     } else {
-        error = ApiError.internal('Unexpected error');
+        error = ApiError.internal(errorConstants.GENERAL.INTERNAL_SERVER_ERROR);
     }
 
     // 📝 Log details always
@@ -40,7 +41,7 @@ export const errorHandler = (
         message:
             error.isOperational || isDev
                 ? error.message
-                : 'Something went wrong, please try again later',
+                : errorConstants.GENERAL.SOMETHING_WENT_WRONG,
         
         timestamp: new Date().toISOString(),
         path: req.originalUrl

@@ -1,3 +1,5 @@
+import { errorConstants } from '../utils/constants/index.js';
+
 export class ApiError extends Error {
     public status: number;
     public isOperational: boolean;
@@ -13,32 +15,32 @@ export class ApiError extends Error {
     }
 
     // ✅ Static helpers for common cases
-    static conflict(message = 'Conflict!'): ApiError {
-        return new ApiError(409, message);
+    static conflict(message?: string): ApiError {
+        return new ApiError(409, message || errorConstants.GENERAL.VALIDATION_ERROR);
     }
 
-    static wrongCredentials(message = 'Username or Password is wrong!'): ApiError {
-        return new ApiError(401, message);
+    static wrongCredentials(message?: string): ApiError {
+        return new ApiError(401, message || errorConstants.AUTHENTICATION.INVALID_CREDENTIALS);
     }
 
-    static unauthorized(message = 'Unauthorized Access'): ApiError {
-        return new ApiError(401, message);
+    static unauthorized(message?: string): ApiError {
+        return new ApiError(401, message || errorConstants.GENERAL.UNAUTHORIZED);
     }
 
-    static notFound(message = 'Resource not found'): ApiError {
-        return new ApiError(404, message);
+    static notFound(message?: string): ApiError {
+        return new ApiError(404, message || errorConstants.DATABASE.RECORD_NOT_FOUND);
     }
 
-    static badRequest(message = 'Bad request'): ApiError {
-        return new ApiError(400, message);
+    static badRequest(message?: string): ApiError {
+        return new ApiError(400, message || errorConstants.GENERAL.VALIDATION_ERROR);
     }
 
-    static forbidden(message = 'Forbidden'): ApiError {
-        return new ApiError(403, message);
+    static forbidden(message?: string): ApiError {
+        return new ApiError(403, message || errorConstants.GENERAL.UNAUTHORIZED);
     }
 
-    static internal(message = 'Internal server error'): ApiError {
+    static internal(message?: string): ApiError {
         // ❌ not operational → unexpected bug
-        return new ApiError(500, message, false);
+        return new ApiError(500, message || errorConstants.GENERAL.INTERNAL_SERVER_ERROR, false);
     }
 }

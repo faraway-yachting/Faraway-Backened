@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { errorConstants } from "../utils/constants/index.js";
 
 /**
  * 🔹 Base structure for all responses
@@ -18,6 +19,13 @@ export interface SuccessResponse<T> extends BaseResponse {
   data?: T;
 }
 
+/**
+ * 🔹 Error response structure
+ */
+export interface ErrorResponse extends BaseResponse {
+  success: false;
+  error?: string;
+}
 
 const SuccessHandler = <T>(
   res: Response,
@@ -25,6 +33,11 @@ const SuccessHandler = <T>(
   message: string,
   statusCode: number = 200
 ): Response<SuccessResponse<T>> => {
+  // Validate status code for success responses
+  if (statusCode < 200 || statusCode >= 300) {
+    throw new Error(errorConstants.GENERAL.INTERNAL_SERVER_ERROR);
+  }
+
   const response: SuccessResponse<T> = {
     success: true,
     statusCode,

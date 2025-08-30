@@ -1,44 +1,74 @@
 import { Request, Response, NextFunction } from 'express';
-import { Schema } from 'joi';
+import { errorConstants } from '../../shared/utils/constants/index.js';
 import { ApiError } from '../../shared/helpers/api-error.js';
 
-export const validateRequest = (schema: Schema) => {
-    return (req: Request, res: Response, next: NextFunction): void => {
-        const { error } = schema.validate(req.body);
-        
-        if (error) {
-            const errorMessage = error.details.map(detail => detail.message).join(', ');
-            return next(new ApiError(400, `Validation error: ${errorMessage}`));
-        }
-        
-        next();
-    };
+/**
+ * 🔹 Validation middleware that uses error constants
+ */
+export const validateRequiredFields = (requiredFields: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const missingFields: string[] = [];
+    
+    requiredFields.forEach(field => {
+      if (!req.body[field]) {
+        missingFields.push(field);
+      }
+    });
+    
+    if (missingFields.length > 0) {
+      const errorMessage = `Missing required fields: ${missingFields.join(', ')}`;
+      return next(ApiError.badRequest(errorMessage));
+    }
+    
+    next();
+  };
 };
 
-export const validateQuery = (schema: Schema) => {
-    return (req: Request, res: Response, next: NextFunction): void => {
-        const { error } = schema.validate(req.query);
-        
-        if (error) {
-            const errorMessage = error.details.map(detail => detail.message).join(', ');
-            return next(new ApiError(400, `Query validation error: ${errorMessage}`));
-        }
-        
-        next();
-    };
+/**
+ * 🔹 Email validation middleware
+ */
+export const validateEmail = (req: Request, res: Response, next: NextFunction) => {
+  const { email } = req.body;
+  
+  if (!email) {
+    return next(ApiError.badRequest(errorConstants.AUTHENTICATION.EMAIL_REQUIRED));
+  }
+  
+  if (typeof email !== 'string') {
+    return next(ApiError.badRequest(errorConstants.AUTHENTICATION.EMAIL_MUST_BE_STRING));
+  }
+  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return next(ApiError.badRequest(errorConstants.AUTHENTICATION.EMAIL_INVALID));
+  }
+  
+  next();
 };
 
-export const validateParams = (schema: Schema) => {
-    return (req: Request, res: Response, next: NextFunction): void => {
-        const { error } = schema.validate(req.params);
-        
-        if (error) {
-            const errorMessage = error.details.map(detail => detail.message).join(', ');
-            return next(new ApiError(400, `Parameter validation error: ${errorMessage}`));
-        }
-        
-        next();
-    };
+/**
+ * 🔹 Password validation middleware
+ */
+export const validatePassword = (req: Request, res: Response, next: NextFunction) => {
+  const { password } = req.body;
+  
+  if (!password) {
+    return next(ApiError.badRequest(errorConstants.AUTHENTICATION.PASSWORD_REQUIRED));
+  }
+  
+  if (typeof password !== 'string') {
+    return next(ApiError.badRequest(errorConstants.AUTHENTICATION.PASSWORD_MUST_BE_STRING));
+  }
+  
+  if (password.length < 6) {
+    return next(ApiError.badRequest(errorConstants.AUTHENTICATION.PASSWORD_MIN_LENGTH));
+  }
+  
+  next();
 };
 
-export default { validateRequest, validateQuery, validateParams };
+export default {
+  validateRequiredFields,
+  validateEmail,
+  validatePassword
+};
