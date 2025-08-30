@@ -12,63 +12,63 @@ const addyachtSchema = Joi.object({
   price: Joi.string()
   .required()
   .messages({
-     'any.required': 'Price is required' 
+     'any.required': 'Price is required'
     }),
   capacity: Joi.string()
   .required()
   .messages({
-     'any.required': 'Category is required' 
+     'any.required': 'Category is required'
     }),
   length: Joi.string()
   .required()
   .messages({
-     'any.required': 'Length is required' 
+     'any.required': 'Length is required'
     }),
   lengthRange: Joi.string().allow('').optional(),
   cabins: Joi.string()
   .required()
   .messages({
-     'any.required': 'Cabins is required' 
+     'any.required': 'Cabins is required'
     }),
   bathrooms: Joi.string()
   .required()
   .messages({
-     'any.required': 'Bathrooms is required' 
+     'any.required': 'Bathrooms is required'
     }),
   passengerDayTrip: Joi.string()
   .required()
   .messages({
-     'any.required': 'Passenger Day Trip is required' 
+     'any.required': 'Passenger Day Trip is required'
     }),
   passengerOvernight: Joi.string()
   .required()
   .messages({
-     'any.required': 'Passenger Overnight is required' 
+     'any.required': 'Passenger Overnight is required'
     }),
   guests: Joi.string()
   .required()
   .messages({
-     'any.required': 'Guests is required' 
+     'any.required': 'Guests is required'
     }),
   guestsRange: Joi.string()
   .required()
   .messages({
-     'any.required': 'Guests Range is required' 
+     'any.required': 'Guests Range is required'
     }),
   dayTripPrice: Joi.string()
   .required()
   .messages({
-     'any.required': 'Day Trip Price is required' 
+     'any.required': 'Day Trip Price is required'
     }),
   overnightPrice: Joi.string()
   .required()
-  .messages({ 
-    'any.required': 'Overnight Price is required' 
+  .messages({
+    'any.required': 'Overnight Price is required'
     }),
   daytripPriceEuro: Joi.string()
   .required()
   .messages({
-     'any.required': 'Daytrip Price (Euro) is required' 
+     'any.required': 'Daytrip Price (Euro) is required'
     }),
 
   // primaryImage should exist (can be any type)
@@ -88,7 +88,7 @@ const addyachtSchema = Joi.object({
   boatLayout: Joi.string().allow(''),
   videoLink: Joi.string().allow(''),
   badge: Joi.string().allow(''),
-  
+
   design: Joi.string().allow('').optional(),
   built: Joi.string().allow('').optional(),
   cruisingSpeed: Joi.string().allow('').optional(),
@@ -109,6 +109,7 @@ const addyachtSchema = Joi.object({
     }),
   waterCapacity: Joi.string().allow('').optional(),
   code: Joi.string().allow('').optional(),
+  tag: Joi.string().allow('').optional(),
   slug: Joi.string().allow('').optional(),
 });
 
@@ -159,4 +160,4 @@ const updateStatusSchema = Joi.object({
     })
 });
 
-export { addyachtSchema, getAllYachtsSchema, getYachtByIdSchema, deleteYachtSchema, editYachtSchema, updateStatusSchema };
+export { addyachtSchema, deleteYachtSchema, editYachtSchema, getAllYachtsSchema, getYachtByIdSchema, updateStatusSchema };
