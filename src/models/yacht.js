@@ -32,7 +32,7 @@ const yachtSchema = new mongoose.Schema({
   fuelCapacity: { type: String },
   waterCapacity: { type: String },
   code: { type: String },
-  tag: { type: String }, // e.g., Luxury, Premium, Standard
+  tags: [{ type: String }], // e.g., ['Luxury', 'Premium', 'Standard']
   slug: {
     type: String,
     unique: true,
@@ -61,6 +61,6 @@ yachtSchema.index({ updatedAt: -1 });
 yachtSchema.index({ type: 1 }); // For type-based queries
 yachtSchema.index({ boatType: 1 }); // For boat type filtering
 yachtSchema.index({ price: 1 }); // For price-based queries
-yachtSchema.index({ tag: 1 }); // For tag-based filtering
+yachtSchema.index({ tags: 1 }); // For tag-based filtering
 
 export default mongoose.model('Yacht', yachtSchema);

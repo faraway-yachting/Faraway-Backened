@@ -1,10 +1,9 @@
-import nodemailer from 'nodemailer';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import fs from 'fs/promises';
-import processTemplate from './processTemplate.js';
 import dotenv from 'dotenv';
+import fs from 'fs/promises';
+import nodemailer from 'nodemailer';
+import path, { dirname } from 'path';
+import { fileURLToPath } from 'url';
+import processTemplate from './processTemplate.js';
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -81,7 +80,7 @@ export const sendEmail = async ({
     return info;
   } catch (error) {
     console.error(`Error sending email to ${to}: ${error.message}`);
-    
+
     // Provide more specific error messages for common SMTP issues
     if (error.message.includes('Greeting never received')) {
       throw new Error('SMTP connection failed - check server settings and credentials');
