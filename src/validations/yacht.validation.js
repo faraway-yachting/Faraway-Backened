@@ -109,7 +109,7 @@ const addyachtSchema = Joi.object({
     }),
   waterCapacity: Joi.string().allow('').optional(),
   code: Joi.string().allow('').optional(),
-  tag: Joi.string().allow('').optional(),
+  tags: Joi.array().items(Joi.string()).optional(),
   slug: Joi.string().allow('').optional(),
 });
 
@@ -161,3 +161,4 @@ const updateStatusSchema = Joi.object({
 });
 
 export { addyachtSchema, deleteYachtSchema, editYachtSchema, getAllYachtsSchema, getYachtByIdSchema, updateStatusSchema };
+
