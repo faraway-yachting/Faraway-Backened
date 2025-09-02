@@ -7,6 +7,7 @@ const blogSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
+    index: true, // This creates the index automatically
   },
   title: {
     type: String,
@@ -35,5 +36,9 @@ const blogSchema = new mongoose.Schema({
 }, {
   timestamps: true // Replacing createdAt and updatedAt
 });
+
+// Add indexes for better query performance
+blogSchema.index({ status: 1, createdAt: -1 }); // For getAllBlogs with status filter
+blogSchema.index({ title: 1 }); // For title-based searches
 
 export default mongoose.model('Blog', blogSchema);

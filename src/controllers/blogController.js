@@ -5,6 +5,7 @@ import logger from '../functions/logger.js';
 import { addBlogSchema, editBlogSchema, getBlogByIdSchema, getAllBlogsSchema, deleteBlogSchema, updateBlogStatusSchema } from '../validations/blog.validation.js';
 import paginate from '../utils/paginate.js';
 import { uploadToCloudinary } from '../utils/cloudinaryUtil.js';
+import { clearBlogCache } from '../utils/cache.js';
 
 // Add a new blog
 export const addBlog = async (req, res, next) => {
@@ -30,7 +31,7 @@ export const addBlog = async (req, res, next) => {
         }
         
         logger.info(`📸 Uploading blog image: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
-        console.log(`📁 File path: ${file.path}`);
+        // File path logging removed for security
         
         // Small delay to ensure file is fully written
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -43,7 +44,7 @@ export const addBlog = async (req, res, next) => {
           
           // Get file stats to verify it's not empty
           const stats = await fs.stat(file.path);
-          console.log(`📊 File size: ${stats.size} bytes`);
+          // File size logging removed for security
           
           if (stats.size === 0) {
             return next(new ApiError('Blog image file is empty', 400));
@@ -54,7 +55,7 @@ export const addBlog = async (req, res, next) => {
           return next(new ApiError(`Blog image file not found: ${file.path}`, 500));
         }
         
-        blogData.image = await uploadToCloudinary(file.path, 'Faraway/blogs/images');
+        blogData.image = await uploadToCloudinary(file.path, 'blogs/images');
         logger.info(`✅ Blog image uploaded successfully: ${blogData.image}`);
       } catch (uploadError) {
         logger.error(`❌ Blog image upload failed:`, uploadError);
@@ -83,6 +84,8 @@ export const addBlog = async (req, res, next) => {
     }
 
     const newBlog = await Blog.create(blogData);
+    // Invalidate blog caches so lists reflect the new item
+    await clearBlogCache();
     
     logger.info({
       message: `✅ Blog created successfully: ${newBlog.title}`,
@@ -110,12 +113,21 @@ export const getAllBlogs = async (req, res, next) => {
       filter.status = status;
     }
 
-    const blogs = await Blog.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parsedLimit);
-
-    const total = await Blog.countDocuments(filter);
+    // Use Promise.all for parallel execution and lean() for better performance
+    const [blogs, total, recentlyUpdated] = await Promise.all([
+      Blog.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .lean()
+        .exec(),
+      Blog.countDocuments(filter).exec(),
+      Blog.find(filter)
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .limit(5)
+        .lean()
+        .exec()
+    ]);
 
     const response = {
       blogs,
@@ -125,6 +137,7 @@ export const getAllBlogs = async (req, res, next) => {
       totalPages: Math.ceil(total / parsedLimit),
       hasNextPage: Number(page) < Math.ceil(total / parsedLimit),
       hasPrevPage: Number(page) > 1,
+      recentlyUpdated
     };
 
     return SuccessHandler(response, 200, 'Blogs fetched successfully', res);
@@ -146,7 +159,11 @@ export const getBlogById = async (req, res, next) => {
     }
 
     const { id } = req.query;
-    const blog = await Blog.findById(id);
+    
+    // Use lean() for better performance and return all fields
+    const blog = await Blog.findById(id)
+      .lean()
+      .exec();
     
     if (!blog) {
       logger.warn({
@@ -193,7 +210,7 @@ export const editBlog = async (req, res, next) => {
           return next(new ApiError(`Image file size exceeds maximum allowed size of 10MB`, 400));
         }
         
-        blogData.image = await uploadToCloudinary(file.path, 'Faraway/blogs/images');
+        blogData.image = await uploadToCloudinary(file.path, 'blogs/images');
         logger.info(`✅ Blog image updated successfully: ${blogData.image}`);
       } catch (uploadError) {
         logger.error(`❌ Blog image upload failed:`, uploadError);
@@ -230,6 +247,8 @@ export const editBlog = async (req, res, next) => {
       timestamp: new Date().toISOString(),
     });
 
+    // Invalidate blog caches after edit
+    await clearBlogCache();
     return SuccessHandler(updatedBlog, 200, 'Blog updated successfully', res);
   } catch (err) {
     logger.error('❌ Edit blog error:', err);
@@ -259,6 +278,8 @@ export const deleteBlog = async (req, res, next) => {
       timestamp: new Date().toISOString(),
     });
 
+    // Invalidate blog caches after delete
+    await clearBlogCache();
     return SuccessHandler(null, 200, 'Blog deleted successfully', res);
   } catch (err) {
     logger.error('❌ Delete blog error:', err);
@@ -304,6 +325,8 @@ export const updateBlogStatus = async (req, res, next) => {
       timestamp: new Date().toISOString(),
     });
 
+    // Invalidate blog caches after status change
+    await clearBlogCache();
     return SuccessHandler(
       updatedBlog, 
       200, 

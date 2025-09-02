@@ -1,6 +1,6 @@
 export default function mapImageFilenamesToUrls(yacht, req) {
   const mapFields = (item) => ({
-    ...item.toObject(),
+    ...item,
     primaryImage: item.primaryImage || null,
     galleryImages: (item.galleryImages || []),
   });

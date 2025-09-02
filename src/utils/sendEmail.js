@@ -1,27 +1,38 @@
-import nodemailer from 'nodemailer';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import fs from 'fs/promises';
-import processTemplate from './processTemplate.js';
 import dotenv from 'dotenv';
+import fs from 'fs/promises';
+import nodemailer from 'nodemailer';
+import path, { dirname } from 'path';
+import { fileURLToPath } from 'url';
+import processTemplate from './processTemplate.js';
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-console.log(__filename,__dirname)
+// File path logging removed for security
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT || '465'),
-  secure: false, // Use secure for port 465
+  service: 'gmail', // Use Gmail service
   auth: {
     user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    pass: process.env.SMTP_PASS, // This should be an App Password for Gmail
   },
-  tls: {
-    rejectUnauthorized: false,
-  },
+  connectionTimeout: 60000, // 60 seconds
+  greetingTimeout: 30000,   // 30 seconds
+  socketTimeout: 60000,     // 60 seconds
 });
-console.log(process.env.SMTP_HOST,process.env.SMTP_PORT,process.env.SMTP_USER,process.env.SMTP_PASS)
+// SMTP credentials logging removed for security
+
+// Verify SMTP connection on startup
+const verifySMTPConnection = async () => {
+  try {
+    await transporter.verify();
+    console.log('✅ SMTP connection verified successfully');
+  } catch (error) {
+    console.error('❌ SMTP connection verification failed:', error.message);
+  }
+};
+
+// Verify connection when module loads
+verifySMTPConnection();
+
 export const sendEmail = async ({
   to,
   subject,
@@ -46,7 +57,7 @@ export const sendEmail = async ({
       `${templateName}.html`
     );
     try {
-      console.log(templatePath)
+      // Template path logging removed for security
       await fs.access(templatePath); // Check if template file exists
     } catch {
       throw new Error(`Template file ${templateName}.html not found`);
@@ -65,11 +76,23 @@ export const sendEmail = async ({
 
     // Send email
     const info = await transporter.sendMail(mailOptions);
-    console.log(`Email sent to ${to}: ${info.messageId}`);
+    console.log(`Email sent successfully to ${to}`);
     return info;
   } catch (error) {
-    console.error(`Error sending email to ${to}:`, error);
-    throw new Error(`Failed to send email: ${error.message}`);
+    console.error(`Error sending email to ${to}: ${error.message}`);
+
+    // Provide more specific error messages for common SMTP issues
+    if (error.message.includes('Greeting never received')) {
+      throw new Error('SMTP connection failed - check server settings and credentials');
+    } else if (error.message.includes('Invalid login')) {
+      throw new Error('SMTP authentication failed - check username and password');
+    } else if (error.message.includes('ECONNREFUSED')) {
+      throw new Error('SMTP server connection refused - check host and port');
+    } else if (error.message.includes('timeout')) {
+      throw new Error('SMTP connection timeout - check network and server settings');
+    } else {
+      throw new Error(`Failed to send email: ${error.message}`);
+    }
   }
 };
 
