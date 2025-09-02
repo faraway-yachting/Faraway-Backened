@@ -37,6 +37,3 @@ export interface TagListResponse {
     totalPages: number;
 }
 
-export interface TagDeleteRequest {
-    id: string;
-}

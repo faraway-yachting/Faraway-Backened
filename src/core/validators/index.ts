@@ -8,7 +8,6 @@ import {
 import {
     createTagSchema,
     updateTagSchema,
-    deleteTagSchema,
     getAllTagsQuerySchema,
   } from './tag.validation.js';
   
@@ -21,10 +20,10 @@ import {
     'admin/auth/resend-otp': { POST: adminResendOtpSchema },
     
     // Admin Tag Routes
-    'admin/tags': { POST: createTagSchema },
-    'admin/tags/update': { PUT: updateTagSchema },
-    'admin/tags/delete': { DELETE: deleteTagSchema },
-    'admin/tags/all': { GET: getAllTagsQuerySchema },
+    'admin/tags/add-tag': { POST: createTagSchema },
+    'admin/tags/edit-tag': { PUT: updateTagSchema },
+    'admin/tags/delete-tag/:id': { DELETE: null },
+    'admin/tags/view-tags': { GET: getAllTagsQuerySchema },
     
     // Yacht Routes
     'v1/yachts': { 

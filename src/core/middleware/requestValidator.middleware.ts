@@ -22,8 +22,16 @@ const requestValidator = (req: Request, res: Response, next: NextFunction): void
         
         logger.debug(`Route path: ${cleanRoutePath}`);
 
-        // Find matching route using exact string matching
+        // Find matching route using pattern matching for parameterized routes
         const matchedRoute = Object.keys(validationSchemas).find((route) => {
+            // If route has parameters (contains :), use pattern matching
+            if (route.includes(':')) {
+                // Convert route pattern to regex
+                const routePattern = route.replace(/:[^/]+/g, '[^/]+');
+                const routeRegex = new RegExp(`^${routePattern}$`);
+                return routeRegex.test(cleanRoutePath);
+            }
+            // Otherwise use exact matching
             return cleanRoutePath === route;
         });
 
@@ -49,11 +57,11 @@ const requestValidator = (req: Request, res: Response, next: NextFunction): void
             return next();
         }
 
-        const { error } = schema.validate(body, { abortEarly: false });
+        const { error } = (schema as any).validate(body, { abortEarly: false });
 
         if (error) {
             logger.error(`Joi validation error in route ${method} ${matchedRoute}:`);
-            error.details.forEach((detail) => {
+            error.details.forEach((detail: { path: string[]; message: string }) => {
                 logger.error(`  - ${detail.path.join('.')}: ${detail.message}`);
             });
 

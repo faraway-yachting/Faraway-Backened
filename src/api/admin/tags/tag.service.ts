@@ -133,6 +133,7 @@ class TagService {
 
     async deleteTag(id: string): Promise<void> {
         try {
+            
             const deletedTag = await Tag.findByIdAndDelete(id);
             if (!deletedTag) {
                 throw ApiError.notFound(errorConstants.TAG.TAG_NOT_FOUND);

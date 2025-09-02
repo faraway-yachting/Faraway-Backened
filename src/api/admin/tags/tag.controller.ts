@@ -6,7 +6,6 @@ import {
     CreateTagRequest, 
     UpdateTagRequest, 
     TagQueryParams, 
-    TagDeleteRequest
 } from './tag.types.js';
 
 // Extend Express Request interface for typed body and query
@@ -54,7 +53,7 @@ class TagController {
 
     async deleteTag(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const { id } = req.query as unknown as TagDeleteRequest;
+            const { id } = req.params;
             await TagService.deleteTag(id);
             successHandler(res, null, errorConstants.TAG.TAG_DELETED);
         } catch (error) {

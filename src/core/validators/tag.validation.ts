@@ -24,9 +24,9 @@ const descriptionSchema = Joi.string().trim().max(500).allow('').messages({
 });
 
 const idSchema = Joi.string().trim().required().messages({
-  'string.base': 'ID must be a string.',
-  'string.empty': 'ID is required.',
-  'any.required': 'ID is required.',
+  'string.base': errorConstants.GENERAL.ID_MUST_BE_STRING,
+  'string.empty': errorConstants.GENERAL.ID_REQUIRED,
+  'any.required': errorConstants.GENERAL.ID_REQUIRED,
 });
 
 // Create tag validation schema
@@ -38,48 +38,45 @@ const createTagSchema = Joi.object({
 
 // Update tag validation schema
 const updateTagSchema = Joi.object({
+  id: idSchema,
   name: nameSchema.optional(),
   slug: slugSchema.optional(),
   description: descriptionSchema.optional(),
-}).min(1).messages({
-  'object.min': 'At least one field must be provided for update.',
+}).min(2).messages({
+  'object.min': errorConstants.TAG.UPDATE_FIELDS_REQUIRED,
 });
 
-// Delete tag validation schema
-const deleteTagSchema = Joi.object({
-  id: idSchema,
-});
+
 
 // Get all tags query validation schema
 const getAllTagsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1).messages({
-    'number.base': 'Page must be a number.',
-    'number.integer': 'Page must be an integer.',
-    'number.min': 'Page must be at least 1.',
+    'number.base': errorConstants.GENERAL.PAGE_MUST_BE_NUMBER,
+    'number.integer': errorConstants.GENERAL.PAGE_MUST_BE_NUMBER,
+    'number.min': errorConstants.GENERAL.PAGE_MIN_VALUE,
   }),
   limit: Joi.number().integer().min(1).max(100).default(10).messages({
-    'number.base': 'Limit must be a number.',
-    'number.integer': 'Limit must be an integer.',
-    'number.min': 'Limit must be at least 1.',
-    'number.max': 'Limit must not exceed 100.',
+    'number.base': errorConstants.GENERAL.LIMIT_MUST_BE_NUMBER,
+    'number.integer': errorConstants.GENERAL.LIMIT_MUST_BE_NUMBER,
+    'number.min': errorConstants.GENERAL.LIMIT_MIN_VALUE,
+    'number.max': errorConstants.GENERAL.LIMIT_MAX_VALUE,
   }),
   search: Joi.string().trim().max(100).optional().messages({
-    'string.base': 'Search must be a string.',
-    'string.max': 'Search must not exceed 100 characters.',
+    'string.base': errorConstants.GENERAL.SEARCH_MUST_BE_STRING,
+    'string.max': errorConstants.GENERAL.SEARCH_MAX_LENGTH,
   }),
   sortBy: Joi.string().valid('name', 'createdAt', 'updatedAt').default('createdAt').messages({
-    'string.base': 'SortBy must be a string.',
-    'any.only': 'SortBy must be one of: name, createdAt, updatedAt.',
+    'string.base': errorConstants.GENERAL.SORT_BY_MUST_BE_STRING,
+    'any.only': errorConstants.TAG.SORT_BY_INVALID,
   }),
   sortOrder: Joi.string().valid('asc', 'desc').default('desc').messages({
-    'string.base': 'SortOrder must be a string.',
-    'any.only': 'SortOrder must be either asc or desc.',
+    'string.base': errorConstants.GENERAL.SORT_ORDER_MUST_BE_STRING,
+    'any.only': errorConstants.TAG.SORT_ORDER_INVALID,
   }),
 });
 
 export {
   createTagSchema,
   updateTagSchema,
-  deleteTagSchema,
   getAllTagsQuerySchema,
 };

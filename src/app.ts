@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import { requestValidator, errorHandler, addPortalContext } from './core/middleware/index.js';
 import { rateLimitMiddleware } from './config/rate-limit.js';
 import { getHealthStatus } from './shared/helpers/health.js';
+import { ApiError } from './shared/helpers/api-error.js';
 import apiRoutes from './api/index.js';
 import environment from './config/environment.js';
 
@@ -48,9 +49,13 @@ app.use('/api', apiRoutes);
 
 // 404 handler
 app.use('*', (req: Request, res: Response) => {
+    const error = new ApiError(404, `Route ${req.originalUrl} not found`, true);
     res.status(404).json({
         success: false,
-        message: `Route ${req.originalUrl} not found`
+        statusCode: error.status,
+        message: error.message,
+        timestamp: new Date().toISOString(),
+        path: req.originalUrl
     });
 });
 
