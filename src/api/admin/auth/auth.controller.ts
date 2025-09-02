@@ -99,3 +99,5 @@ export const resendOtp = (req: TypedRequestBody<ResendOtpRequest>, res: Response
 
 export const logout = (req: Request, res: Response, next: NextFunction) => 
     authController.logout.call(authController, req, res, next);
+
+export default authController;
