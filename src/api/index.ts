@@ -14,8 +14,6 @@ router.use('/v1', commonRoutes);
 // Portal routes (admin + website) - mount directly here to avoid circular dependency
 // For each portal, mount the SAME common routes
 Object.entries(PORTAL_CONFIG).forEach(([, portalConfig]) => {
-    console.log(`🚀 Mounting ${portalConfig.name} at ${portalConfig.prefix} (using common routes)`);
-    
     // Use the SAME common routes for all portals
     router.use(portalConfig.prefix, commonRoutes);
 });

@@ -11,7 +11,6 @@ const userSchema = new Schema<User>(
     {
         email: {
             type: String,
-            unique: true,
             required: true,
         },
         password: {
@@ -40,7 +39,7 @@ userSchema.methods.comparePassword = async function (enteredPassword: string): P
 };
 
 // Add indexes for better performance
-userSchema.index({ email: 1 });
+userSchema.index({ email: 1 }, { unique: true }); // Unique email index
 userSchema.index({ otpVerified: 1 });
 userSchema.index({ createdAt: -1 });
 
