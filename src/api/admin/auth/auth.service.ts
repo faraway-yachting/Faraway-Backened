@@ -14,7 +14,7 @@ interface MessageResponse {
 
 class AuthService {
 
-    async login(email: string, password: string): Promise<AuthResult> {
+    async login(email: string, password: string): Promise<AuthResult> { 
         // Check if email matches admin email
         const allowedAdminEmail = environment.ADMIN_EMAIL;
 

@@ -93,6 +93,27 @@ export const errorConstants = {
     YACHT_DELETED: "Yacht deleted successfully.",
   },
 
+  // 🔹 Tag Errors
+  TAG: {
+    NAME_REQUIRED: "Tag name is required.",
+    NAME_MUST_BE_STRING: "Tag name must be a valid string.",
+    NAME_MIN_LENGTH: "Tag name must be at least 2 characters long.",
+    NAME_MAX_LENGTH: "Tag name must not exceed 100 characters.",
+    SLUG_REQUIRED: "Tag slug is required.",
+    SLUG_MUST_BE_STRING: "Tag slug must be a valid string.",
+    SLUG_MIN_LENGTH: "Tag slug must be at least 2 characters long.",
+    SLUG_MAX_LENGTH: "Tag slug must not exceed 100 characters.",
+    SLUG_INVALID_FORMAT: "Tag slug must contain only lowercase letters, numbers, and hyphens.",
+    SLUG_ALREADY_EXISTS: "Tag with this slug already exists.",
+    DESCRIPTION_MUST_BE_STRING: "Tag description must be a valid string.",
+    DESCRIPTION_MAX_LENGTH: "Tag description must not exceed 500 characters.",
+    TAG_NOT_FOUND: "Tag not found.",
+    TAG_CREATED: "Tag created successfully.",
+    TAG_UPDATED: "Tag updated successfully.",
+    TAG_DELETED: "Tag deleted successfully.",
+    TAGS_FETCHED: "Tags fetched successfully.",
+  },
+
   // 🔹 File Upload Errors
   FILE_UPLOAD: {
     FILE_REQUIRED: "File is required.",

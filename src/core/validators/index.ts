@@ -5,6 +5,12 @@ import {
     adminResetPasswordSchema,
     adminResendOtpSchema,
   } from './auth.validation.js';
+import {
+    createTagSchema,
+    updateTagSchema,
+    deleteTagSchema,
+    getAllTagsQuerySchema,
+  } from './tag.validation.js';
   
   const validationSchemas = {
     // Admin Authentication Routes
@@ -13,6 +19,12 @@ import {
     'admin/auth/verify-otp': { POST: adminVerifyOtpSchema },
     'admin/auth/reset-password': { POST: adminResetPasswordSchema },
     'admin/auth/resend-otp': { POST: adminResendOtpSchema },
+    
+    // Admin Tag Routes
+    'admin/tags': { POST: createTagSchema },
+    'admin/tags/update': { PUT: updateTagSchema },
+    'admin/tags/delete': { DELETE: deleteTagSchema },
+    'admin/tags/all': { GET: getAllTagsQuerySchema },
     
     // Yacht Routes
     'v1/yachts': { 
