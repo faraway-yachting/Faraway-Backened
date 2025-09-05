@@ -6,7 +6,7 @@ import { clearYachtCache } from '../utils/cache.js';
 import { uploadToCloudinary } from '../utils/cloudinaryUtil.js';
 import mapImageFilenamesToUrls from '../utils/mapImageFilenamesToUrls.js';
 import paginate from '../utils/paginate.js';
-import { addyachtSchema, editYachtSchema, getAllYachtsSchema, getYachtByIdSchema } from '../validations/yacht.validation.js';
+import { addyachtSchema, editYachtSchema, getAllYachtsSchema, getYachtByIdSchema, getYachtBySlugSchema } from '../validations/yacht.validation.js';
 
 
 // Add a new yacht
@@ -185,19 +185,19 @@ export const getAllYachts = async (req, res, next) => {
   }
 };
 
-// Get yacht by ID
-export const getYachtById = async (req, res, next) => {
+// Get yacht by slug
+export const getYachtBySlug = async (req, res, next) => {
   try {
     // Validate the query using Joi
-    const { error } = getYachtByIdSchema.validate(req.query);
+    const { error } = getYachtBySlugSchema.validate(req.query);
     if (error) {
       return next(new ApiError(error.details[0].message, 400));
     }
 
-    const { id } = req.query;
+    const { slug } = req.query;
 
     // Use lean() for better performance and select only needed fields
-    const yacht = await Yacht.findById(id)
+    const yacht = await Yacht.findOne({ slug })
       .lean()
       .exec();
 
@@ -364,7 +364,7 @@ export const updateYachtStatus = async (req, res, next) => {
 export default {
   addYacht,
   getAllYachts,
-  getYachtById,
+  getYachtBySlug,
   deleteYacht,
   editYacht,
   updateYachtStatus,

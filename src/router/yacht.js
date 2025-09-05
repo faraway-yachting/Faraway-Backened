@@ -1,9 +1,8 @@
 import express from 'express';
-import yachtController from '../controllers/yachtController.js';
-import upload from '../middleware/upload.middleware.js';
+import yachtController, { deleteYacht, editYacht, updateYachtStatus } from '../controllers/yachtController.js';
 import { verifyToken } from '../middleware/Auth.middleware.js';
-import { deleteYacht, editYacht, updateYachtStatus } from '../controllers/yachtController.js';
-import { cacheYachtList, cacheYachtById, clearYachtCache } from '../utils/cache.js';
+import upload from '../middleware/upload.middleware.js';
+import { cacheYachtBySlug, cacheYachtList } from '../utils/cache.js';
 
 const router = express.Router();
 
@@ -21,10 +20,10 @@ router.post('/add-yacht', verifyToken,
 // Cached route for getting all yachts
 router.get('/all-yachts', cacheYachtList, yachtController.getAllYachts);
 
-// Cached route for getting individual yacht
-router.get('/', cacheYachtById, yachtController.getYachtById);
+// Cached route for getting individual yacht by slug
+router.get('/by-slug', cacheYachtBySlug, yachtController.getYachtBySlug);
 
-router.put('/edit-yacht', verifyToken, 
+router.put('/edit-yacht', verifyToken,
     upload.fields([
     { name: 'primaryImage', maxCount: 1 },
     { name: 'galleryImages', maxCount: 15 },

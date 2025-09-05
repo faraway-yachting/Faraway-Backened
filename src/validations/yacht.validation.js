@@ -134,6 +134,19 @@ const getYachtByIdSchema = Joi.object({
       'string.hex': 'ID must be a valid.'
     })
 });
+
+// For getYachtBySlug, require 'slug' as a slug string
+const getYachtBySlugSchema = Joi.object({
+  slug: Joi.string()
+    .trim()
+    .lowercase()
+    .pattern(/^[a-z0-9-]+$/)
+    .required()
+    .messages({
+      'any.required': 'Yacht slug is required',
+      'string.pattern.base': 'Slug can only contain lowercase letters, numbers, and hyphens'
+    })
+});
 const deleteYachtSchema = Joi.object({
   id: Joi.string()
   .length(24)
@@ -160,5 +173,5 @@ const updateStatusSchema = Joi.object({
     })
 });
 
-export { addyachtSchema, deleteYachtSchema, editYachtSchema, getAllYachtsSchema, getYachtByIdSchema, updateStatusSchema };
+export { addyachtSchema, deleteYachtSchema, editYachtSchema, getAllYachtsSchema, getYachtByIdSchema, getYachtBySlugSchema, updateStatusSchema };
 

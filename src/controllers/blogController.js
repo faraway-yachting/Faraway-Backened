@@ -1,11 +1,11 @@
-import Blog from '../models/blog.js';
-import SuccessHandler from '../utils/SuccessHandler.js';
-import ApiError from '../utils/ApiError.js';
 import logger from '../functions/logger.js';
-import { addBlogSchema, editBlogSchema, getBlogByIdSchema, getAllBlogsSchema, deleteBlogSchema, updateBlogStatusSchema } from '../validations/blog.validation.js';
-import paginate from '../utils/paginate.js';
-import { uploadToCloudinary } from '../utils/cloudinaryUtil.js';
+import Blog from '../models/blog.js';
+import ApiError from '../utils/ApiError.js';
+import SuccessHandler from '../utils/SuccessHandler.js';
 import { clearBlogCache } from '../utils/cache.js';
+import { uploadToCloudinary } from '../utils/cloudinaryUtil.js';
+import paginate from '../utils/paginate.js';
+import { addBlogSchema, deleteBlogSchema, editBlogSchema, getBlogByIdSchema, getBlogBySlugSchema, updateBlogStatusSchema } from '../validations/blog.validation.js';
 
 // Add a new blog
 export const addBlog = async (req, res, next) => {
@@ -23,29 +23,29 @@ export const addBlog = async (req, res, next) => {
     if (req.files && req.files.image && req.files.image[0]) {
       try {
         const file = req.files.image[0];
-        
+
         // Check file size (max 10MB)
         const maxSize = 10 * 1024 * 1024; // 10MB in bytes
         if (file.size > maxSize) {
           return next(new ApiError(`Image file size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum allowed size of 10MB`, 400));
         }
-        
+
         logger.info(`📸 Uploading blog image: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
         // File path logging removed for security
-        
+
         // Small delay to ensure file is fully written
         await new Promise(resolve => setTimeout(resolve, 100));
-        
+
         // Verify file exists before uploading
         const fs = await import('fs/promises');
         try {
           await fs.access(file.path);
           logger.info('✅ Blog image file exists and is accessible');
-          
+
           // Get file stats to verify it's not empty
           const stats = await fs.stat(file.path);
           // File size logging removed for security
-          
+
           if (stats.size === 0) {
             return next(new ApiError('Blog image file is empty', 400));
           }
@@ -54,7 +54,7 @@ export const addBlog = async (req, res, next) => {
           logger.error('❌ Access error:', accessError.message);
           return next(new ApiError(`Blog image file not found: ${file.path}`, 500));
         }
-        
+
         blogData.image = await uploadToCloudinary(file.path, 'blogs/images');
         logger.info(`✅ Blog image uploaded successfully: ${blogData.image}`);
       } catch (uploadError) {
@@ -86,7 +86,7 @@ export const addBlog = async (req, res, next) => {
     const newBlog = await Blog.create(blogData);
     // Invalidate blog caches so lists reflect the new item
     await clearBlogCache();
-    
+
     logger.info({
       message: `✅ Blog created successfully: ${newBlog.title}`,
       timestamp: new Date().toISOString(),
@@ -147,24 +147,24 @@ export const getAllBlogs = async (req, res, next) => {
   }
 };
 
-// Get blog by ID
-export const getBlogById = async (req, res, next) => {
+// Get blog by slug
+export const getBlogBySlug = async (req, res, next) => {
   try {
     logger.info('🔍 Get blog by ID request received');
 
     // Validate the query using Joi
-    const { error } = getBlogByIdSchema.validate(req.query);
+    const { error } = getBlogBySlugSchema.validate(req.query);
     if (error) {
       return next(new ApiError(error.details[0].message, 400));
     }
 
-    const { id } = req.query;
-    
+    const { slug } = req.query;
+
     // Use lean() for better performance and return all fields
-    const blog = await Blog.findById(id)
+    const blog = await Blog.findOne({ slug })
       .lean()
       .exec();
-    
+
     if (!blog) {
       logger.warn({
         message: `❌ Blog not found for ID: ${id}`,
@@ -203,13 +203,13 @@ export const editBlog = async (req, res, next) => {
     if (req.files && req.files.image && req.files.image[0]) {
       try {
         const file = req.files.image[0];
-        
+
         // Check file size (max 10MB)
         const maxSize = 10 * 1024 * 1024;
         if (file.size > maxSize) {
           return next(new ApiError(`Image file size exceeds maximum allowed size of 10MB`, 400));
         }
-        
+
         blogData.image = await uploadToCloudinary(file.path, 'blogs/images');
         logger.info(`✅ Blog image updated successfully: ${blogData.image}`);
       } catch (uploadError) {
@@ -226,9 +226,9 @@ export const editBlog = async (req, res, next) => {
 
     // Check if slug is being updated and if it already exists
     if (blogData.slug && blogData.slug !== existingBlog.slug) {
-      const slugExists = await Blog.findOne({ 
-        slug: blogData.slug, 
-        _id: { $ne: id } 
+      const slugExists = await Blog.findOne({
+        slug: blogData.slug,
+        _id: { $ne: id }
       });
       if (slugExists) {
         return next(new ApiError('Blog with this slug already exists', 409));
@@ -268,7 +268,7 @@ export const deleteBlog = async (req, res, next) => {
 
     const { id } = req.query;
     const blog = await Blog.findByIdAndDelete(id);
-    
+
     if (!blog) {
       return next(new ApiError('Blog not found', 404));
     }
@@ -328,9 +328,9 @@ export const updateBlogStatus = async (req, res, next) => {
     // Invalidate blog caches after status change
     await clearBlogCache();
     return SuccessHandler(
-      updatedBlog, 
-      200, 
-      `Blog ${status === 'published' ? 'published' : 'unpublished'} successfully`, 
+      updatedBlog,
+      200,
+      `Blog ${status === 'published' ? 'published' : 'unpublished'} successfully`,
       res
     );
   } catch (err) {
@@ -342,7 +342,7 @@ export const updateBlogStatus = async (req, res, next) => {
 export default {
   addBlog,
   getAllBlogs,
-  getBlogById,
+  getBlogBySlug,
 
   editBlog,
   deleteBlog,

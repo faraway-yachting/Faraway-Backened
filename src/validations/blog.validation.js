@@ -129,6 +129,18 @@ const getBlogByIdSchema = Joi.object({
   id: objectIdSchema,
 });
 
+const getBlogBySlugSchema = Joi.object({
+  slug: Joi.string()
+    .trim()
+    .lowercase()
+    .pattern(/^[a-z0-9-]+$/)
+    .required()
+    .messages({
+      'any.required': 'Blog slug is required',
+      'string.pattern.base': 'Slug can only contain lowercase letters, numbers, and hyphens',
+    }),
+});
+
 const deleteBlogSchema = Joi.object({
   id: objectIdSchema,
 });
@@ -144,10 +156,9 @@ const updateBlogStatusSchema = Joi.object({
 });
 
 export {
-  addBlogSchema,
-  editBlogSchema,
+  addBlogSchema, deleteBlogSchema, editBlogSchema,
   getAllBlogsSchema,
   getBlogByIdSchema,
-  deleteBlogSchema,
-  updateBlogStatusSchema,
+  getBlogBySlugSchema, updateBlogStatusSchema
 };
+
