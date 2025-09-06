@@ -3,7 +3,11 @@ import blogController from '../controllers/blogController.js';
 import { verifyToken } from '../middleware/Auth.middleware.js';
 import { yachtRateLimiter } from '../middleware/rateLimiter.js';
 import upload from '../middleware/upload.middleware.js';
-import { cacheBlogBySlug, cacheBlogList } from '../utils/cache.js';
+import {
+  cacheBlogById,
+  cacheBlogBySlug,
+  cacheBlogList,
+} from '../utils/cache.js';
 
 const router = express.Router();
 
@@ -11,29 +15,29 @@ const router = express.Router();
 router.use(yachtRateLimiter);
 
 // Add blog with image upload
-router.post('/add-blog',
+router.post(
+  '/add-blog',
   verifyToken,
-  upload.fields([
-    { name: 'image', maxCount: 1 }
-  ]),
+  upload.fields([{ name: 'image', maxCount: 1 }]),
   blogController.addBlog
 );
 
 // Cached route for getting all blogs
 router.get('/all-blogs', cacheBlogList, blogController.getAllBlogs);
 
+// Cached route for getting individual blog by ID
+router.get('/blogByID', cacheBlogById, blogController.getBlogById);
+
 // Cached route for getting individual blog by slug
 router.get('/blogBySlug', cacheBlogBySlug, blogController.getBlogBySlug);
 
 // Get blog by slug
 
-
 // Edit blog with optional image upload
-router.put('/edit-blog',
+router.put(
+  '/edit-blog',
   verifyToken,
-  upload.fields([
-    { name: 'image', maxCount: 1 }
-  ]),
+  upload.fields([{ name: 'image', maxCount: 1 }]),
   blogController.editBlog
 );
 
