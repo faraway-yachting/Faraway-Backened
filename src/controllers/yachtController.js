@@ -199,6 +199,11 @@ export const getAllYachts = async (req, res, next) => {
       recentlyUpdated,
     };
 
+    // Lightweight log for observability on list responses
+    console.log(
+      `getAllYachts | page=${Number(page)} limit=${parsedLimit} status=${status || 'all'} | returned=${yachtsWithUrls.length} total=${total}`
+    );
+
     return SuccessHandler(response, 200, 'Yachts fetched successfully', res);
   } catch (err) {
     next(new ApiError(err.message, 400));

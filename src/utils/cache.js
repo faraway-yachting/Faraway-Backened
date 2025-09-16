@@ -69,7 +69,7 @@ export const cacheYachtList = async (req, res, next) => {
     const cachedData = await Promise.race([
       redis.get(cacheKey),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Redis timeout')), 200) // Only 200ms timeout!
+        setTimeout(() => reject(new Error('Redis timeout')), 800) // Slightly higher timeout to reduce false negatives
       )
     ]);
     const cacheTime = Date.now() - cacheStart;
@@ -89,6 +89,21 @@ export const cacheYachtList = async (req, res, next) => {
     // Override send method to cache response and log timing
     res.json = function(data) {
       const dbQueryTime = Date.now() - requestStart;
+
+      // Inspect payload structure from SuccessHandler for yacht list
+      // Expecting: { success: true, statusCode, message, data: { yachts: [], total, ... } }
+      const yachtsLength = Array.isArray(data?.data?.yachts) ? data.data.yachts.length : undefined;
+      const totalItems = typeof data?.data?.total === 'number' ? data.data.total : undefined;
+
+      if (typeof yachtsLength === 'number') {
+        console.log(`📦 Yacht list payload | yachts.length=${yachtsLength}${typeof totalItems === 'number' ? `, total=${totalItems}` : ''}`);
+      }
+
+      // Avoid caching empty list responses to prevent stale "no yachts found"
+      if (typeof yachtsLength === 'number' && yachtsLength === 0) {
+        console.log('🛑 Not caching empty yacht list response');
+        return originalSend.call(this, data);
+      }
 
       // Cache for 5 minutes (don't block response)
       redis.setex(cacheKey, 300, JSON.stringify(data))

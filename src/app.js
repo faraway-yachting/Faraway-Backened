@@ -15,6 +15,8 @@ const app = express();
 
 const startServer = async () => {
   try {
+    // If behind a proxy/CDN, trust proxy to get correct client IPs
+    app.set('trust proxy', 1);
     // Basic middleware
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true, limit: '10mb' }));
