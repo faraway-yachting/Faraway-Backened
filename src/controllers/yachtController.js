@@ -170,10 +170,35 @@ export const getAllYachts = async (req, res, next) => {
       filter.status = status;
     }
 
+    // Lightweight projection for list responses to reduce payload size on slow networks
+    const listProjection = {
+      boatType: 1,
+      price: 1,
+      capacity: 1,
+      length: 1,
+      lengthRange: 1,
+      title: 1,
+      cabins: 1,
+      bathrooms: 1,
+      guests: 1,
+      guestsRange: 1,
+      dayTripPrice: 1,
+      overnightPrice: 1,
+      daytripPriceEuro: 1,
+      primaryImage: 1,
+      badge: 1,
+      slug: 1,
+      type: 1,
+      status: 1,
+      updatedAt: 1,
+      createdAt: 1,
+    };
+
     // Use Promise.all for parallel execution
     const [yachts, total, recentlyUpdated] = await Promise.all([
       Yacht.find(filter)
         .sort({ updatedAt: -1, createdAt: -1 })
+        .select(listProjection)
         .skip(skip)
         .limit(parsedLimit)
         .lean()
@@ -182,6 +207,7 @@ export const getAllYachts = async (req, res, next) => {
       // Recently updated (last 5)
       Yacht.find(filter)
         .sort({ updatedAt: -1, createdAt: -1 })
+        .select(listProjection)
         .limit(5)
         .lean()
         .exec(),

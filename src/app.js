@@ -6,6 +6,7 @@ import express from 'express';
 import path from 'path';
 
 import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import ApiErrorMiddleware from './middleware/ApiError.middleware.js';
 import { helmetMiddleware } from './middleware/helmet.middleware.js';
 import router from './router/index.js';
@@ -21,6 +22,8 @@ const startServer = async () => {
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true, limit: '10mb' }));
     app.use(cookieParser());
+    // HTTP compression for faster responses on slow networks
+    app.use(compression());
 
     // Security headers with helmet
     app.use(helmetMiddleware);

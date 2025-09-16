@@ -26,7 +26,7 @@ redis.on('ready', () => {
   testRedisPerformance();
 });
 
-redis.on('error', (err) => {
+redis.on('error', err => {
   console.error('❌ Redis connection error:', err.message);
 });
 
@@ -68,35 +68,44 @@ export const cacheYachtList = async (req, res, next) => {
     const cacheStart = Date.now();
     const cachedData = await Promise.race([
       redis.get(cacheKey),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Redis timeout')), 800) // Slightly higher timeout to reduce false negatives
-      )
+      new Promise(
+        (_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 800) // Slightly higher timeout to reduce false negatives
+      ),
     ]);
     const cacheTime = Date.now() - cacheStart;
 
     if (cachedData) {
       const totalTime = Date.now() - requestStart;
-      console.log(`⚡ Cache HIT for yacht list | Cache: ${cacheTime}ms | Total: ${totalTime}ms | Key: ${cacheKey}`);
+      console.log(
+        `⚡ Cache HIT for yacht list | Cache: ${cacheTime}ms | Total: ${totalTime}ms | Key: ${cacheKey}`
+      );
       return res.json(JSON.parse(cachedData));
     }
 
     // Cache miss - will query database
-    console.log(`🔄 Cache MISS for yacht list | Cache check: ${cacheTime}ms | Key: ${cacheKey}`);
+    console.log(
+      `🔄 Cache MISS for yacht list | Cache check: ${cacheTime}ms | Key: ${cacheKey}`
+    );
 
     // Store original send method
     const originalSend = res.json;
 
     // Override send method to cache response and log timing
-    res.json = function(data) {
+    res.json = function (data) {
       const dbQueryTime = Date.now() - requestStart;
 
       // Inspect payload structure from SuccessHandler for yacht list
       // Expecting: { success: true, statusCode, message, data: { yachts: [], total, ... } }
-      const yachtsLength = Array.isArray(data?.data?.yachts) ? data.data.yachts.length : undefined;
-      const totalItems = typeof data?.data?.total === 'number' ? data.data.total : undefined;
+      const yachtsLength = Array.isArray(data?.data?.yachts)
+        ? data.data.yachts.length
+        : undefined;
+      const totalItems =
+        typeof data?.data?.total === 'number' ? data.data.total : undefined;
 
       if (typeof yachtsLength === 'number') {
-        console.log(`📦 Yacht list payload | yachts.length=${yachtsLength}${typeof totalItems === 'number' ? `, total=${totalItems}` : ''}`);
+        console.log(
+          `📦 Yacht list payload | yachts.length=${yachtsLength}${typeof totalItems === 'number' ? `, total=${totalItems}` : ''}`
+        );
       }
 
       // Avoid caching empty list responses to prevent stale "no yachts found"
@@ -106,10 +115,13 @@ export const cacheYachtList = async (req, res, next) => {
       }
 
       // Cache for 5 minutes (don't block response)
-      redis.setex(cacheKey, 300, JSON.stringify(data))
+      redis
+        .setex(cacheKey, 300, JSON.stringify(data))
         .then(() => {
           const cacheWriteTime = Date.now() - requestStart;
-          console.log(`💾 Cached yacht list data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms`);
+          console.log(
+            `💾 Cached yacht list data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms`
+          );
         })
         .catch(err => console.error('Cache write error:', err.message));
 
@@ -119,7 +131,9 @@ export const cacheYachtList = async (req, res, next) => {
     next();
   } catch (error) {
     const totalTime = Date.now() - requestStart;
-    console.log(`⚠️ Redis cache failed, using database directly | Time: ${totalTime}ms | Error: ${error.message}`);
+    console.log(
+      `⚠️ Redis cache failed, using database directly | Time: ${totalTime}ms | Error: ${error.message}`
+    );
     next(); // Continue without cache if Redis fails
   }
 };
@@ -138,25 +152,32 @@ export const cacheYachtById = async (req, res, next) => {
 
     if (cachedData) {
       const totalTime = Date.now() - requestStart;
-      console.log(`⚡ Cache HIT for yacht by ID | Cache: ${cacheTime}ms | Total: ${totalTime}ms | ID: ${id}`);
+      console.log(
+        `⚡ Cache HIT for yacht by ID | Cache: ${cacheTime}ms | Total: ${totalTime}ms | ID: ${id}`
+      );
       return res.json(JSON.parse(cachedData));
     }
 
     // Cache miss - will query database
-    console.log(`🔄 Cache MISS for yacht by ID | Cache check: ${cacheTime}ms | ID: ${id}`);
+    console.log(
+      `🔄 Cache MISS for yacht by ID | Cache check: ${cacheTime}ms | ID: ${id}`
+    );
 
     // Store original send method
     const originalSend = res.json;
 
     // Override send method to cache response and log timing
-    res.json = function(data) {
+    res.json = function (data) {
       const dbQueryTime = Date.now() - requestStart;
 
       // Cache for 10 minutes (longer for individual yachts)
-      redis.setex(cacheKey, 600, JSON.stringify(data))
+      redis
+        .setex(cacheKey, 600, JSON.stringify(data))
         .then(() => {
           const cacheWriteTime = Date.now() - requestStart;
-          console.log(`💾 Cached yacht by ID data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms | ID: ${id}`);
+          console.log(
+            `💾 Cached yacht by ID data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms | ID: ${id}`
+          );
         })
         .catch(err => console.error('Cache write error:', err.message));
 
@@ -166,7 +187,9 @@ export const cacheYachtById = async (req, res, next) => {
     next();
   } catch (error) {
     const totalTime = Date.now() - requestStart;
-    console.log(`⚠️ Redis cache failed for yacht by ID | Time: ${totalTime}ms | Error: ${error.message} | ID: ${id}`);
+    console.log(
+      `⚠️ Redis cache failed for yacht by ID | Time: ${totalTime}ms | Error: ${error.message} | ID: ${id}`
+    );
     next(); // Continue without cache if Redis fails
   }
 };
@@ -184,18 +207,25 @@ export const cacheYachtBySlug = async (req, res, next) => {
 
     if (cachedData) {
       const totalTime = Date.now() - requestStart;
-      console.log(`⚡ Cache HIT for yacht by slug | Cache: ${cacheTime}ms | Total: ${totalTime}ms | Slug: ${slug}`);
+      console.log(
+        `⚡ Cache HIT for yacht by slug | Cache: ${cacheTime}ms | Total: ${totalTime}ms | Slug: ${slug}`
+      );
       return res.json(JSON.parse(cachedData));
     }
 
-    console.log(`🔄 Cache MISS for yacht by slug | Cache check: ${cacheTime}ms | Slug: ${slug}`);
+    console.log(
+      `🔄 Cache MISS for yacht by slug | Cache check: ${cacheTime}ms | Slug: ${slug}`
+    );
     const originalSend = res.json;
-    res.json = function(data) {
+    res.json = function (data) {
       const dbQueryTime = Date.now() - requestStart;
-      redis.setex(cacheKey, 600, JSON.stringify(data))
+      redis
+        .setex(cacheKey, 600, JSON.stringify(data))
         .then(() => {
           const cacheWriteTime = Date.now() - requestStart;
-          console.log(`💾 Cached yacht by slug data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms | Slug: ${slug}`);
+          console.log(
+            `💾 Cached yacht by slug data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms | Slug: ${slug}`
+          );
         })
         .catch(err => console.error('Cache write error:', err.message));
       return originalSend.call(this, data);
@@ -203,7 +233,9 @@ export const cacheYachtBySlug = async (req, res, next) => {
     next();
   } catch (error) {
     const totalTime = Date.now() - requestStart;
-    console.log(`⚠️ Redis cache failed for yacht by slug | Time: ${totalTime}ms | Error: ${error.message} | Slug: ${slug}`);
+    console.log(
+      `⚠️ Redis cache failed for yacht by slug | Time: ${totalTime}ms | Error: ${error.message} | Slug: ${slug}`
+    );
     next();
   }
 };
@@ -222,25 +254,32 @@ export const cacheBlogList = async (req, res, next) => {
 
     if (cachedData) {
       const totalTime = Date.now() - requestStart;
-      console.log(`⚡ Cache HIT for blog list | Cache: ${cacheTime}ms | Total: ${totalTime}ms | Key: ${cacheKey}`);
+      console.log(
+        `⚡ Cache HIT for blog list | Cache: ${cacheTime}ms | Total: ${totalTime}ms | Key: ${cacheKey}`
+      );
       return res.json(JSON.parse(cachedData));
     }
 
     // Cache miss - will query database
-    console.log(`🔄 Cache MISS for blog list | Cache check: ${cacheTime}ms | Key: ${cacheKey}`);
+    console.log(
+      `🔄 Cache MISS for blog list | Cache check: ${cacheTime}ms | Key: ${cacheKey}`
+    );
 
     // Store original send method
     const originalSend = res.json;
 
     // Override send method to cache response and log timing
-    res.json = function(data) {
+    res.json = function (data) {
       const dbQueryTime = Date.now() - requestStart;
 
       // Cache for 5 minutes
-      redis.setex(cacheKey, 300, JSON.stringify(data))
+      redis
+        .setex(cacheKey, 300, JSON.stringify(data))
         .then(() => {
           const cacheWriteTime = Date.now() - requestStart;
-          console.log(`💾 Cached blog list data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms`);
+          console.log(
+            `💾 Cached blog list data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms`
+          );
         })
         .catch(err => console.error('Cache write error:', err.message));
 
@@ -250,7 +289,9 @@ export const cacheBlogList = async (req, res, next) => {
     next();
   } catch (error) {
     const totalTime = Date.now() - requestStart;
-    console.log(`⚠️ Redis cache failed for blog list | Time: ${totalTime}ms | Error: ${error.message}`);
+    console.log(
+      `⚠️ Redis cache failed for blog list | Time: ${totalTime}ms | Error: ${error.message}`
+    );
     next(); // Continue without cache if Redis fails
   }
 };
@@ -269,25 +310,32 @@ export const cacheBlogById = async (req, res, next) => {
 
     if (cachedData) {
       const totalTime = Date.now() - requestStart;
-      console.log(`⚡ Cache HIT for blog by ID | Cache: ${cacheTime}ms | Total: ${totalTime}ms | ID: ${id}`);
+      console.log(
+        `⚡ Cache HIT for blog by ID | Cache: ${cacheTime}ms | Total: ${totalTime}ms | ID: ${id}`
+      );
       return res.json(JSON.parse(cachedData));
     }
 
     // Cache miss - will query database
-    console.log(`🔄 Cache MISS for blog by ID | Cache check: ${cacheTime}ms | ID: ${id}`);
+    console.log(
+      `🔄 Cache MISS for blog by ID | Cache check: ${cacheTime}ms | ID: ${id}`
+    );
 
     // Store original send method
     const originalSend = res.json;
 
     // Override send method to cache response and log timing
-    res.json = function(data) {
+    res.json = function (data) {
       const dbQueryTime = Date.now() - requestStart;
 
       // Cache for 10 minutes (longer for individual blogs)
-      redis.setex(cacheKey, 600, JSON.stringify(data))
+      redis
+        .setex(cacheKey, 600, JSON.stringify(data))
         .then(() => {
           const cacheWriteTime = Date.now() - requestStart;
-          console.log(`💾 Cached blog by ID data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms | ID: ${id}`);
+          console.log(
+            `💾 Cached blog by ID data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms | ID: ${id}`
+          );
         })
         .catch(err => console.error('Cache write error:', err.message));
 
@@ -297,7 +345,9 @@ export const cacheBlogById = async (req, res, next) => {
     next();
   } catch (error) {
     const totalTime = Date.now() - requestStart;
-    console.log(`⚠️ Redis cache failed for blog by ID | Error: ${error.message} | ID: ${id}`);
+    console.log(
+      `⚠️ Redis cache failed for blog by ID | Error: ${error.message} | ID: ${id}`
+    );
     next(); // Continue without cache if Redis fails
   }
 };
@@ -315,18 +365,25 @@ export const cacheBlogBySlug = async (req, res, next) => {
 
     if (cachedData) {
       const totalTime = Date.now() - requestStart;
-      console.log(`⚡ Cache HIT for blog by slug | Cache: ${cacheTime}ms | Total: ${totalTime}ms | Slug: ${slug}`);
+      console.log(
+        `⚡ Cache HIT for blog by slug | Cache: ${cacheTime}ms | Total: ${totalTime}ms | Slug: ${slug}`
+      );
       return res.json(JSON.parse(cachedData));
     }
 
-    console.log(`🔄 Cache MISS for blog by slug | Cache check: ${cacheTime}ms | Slug: ${slug}`);
+    console.log(
+      `🔄 Cache MISS for blog by slug | Cache check: ${cacheTime}ms | Slug: ${slug}`
+    );
     const originalSend = res.json;
-    res.json = function(data) {
+    res.json = function (data) {
       const dbQueryTime = Date.now() - requestStart;
-      redis.setex(cacheKey, 600, JSON.stringify(data))
+      redis
+        .setex(cacheKey, 600, JSON.stringify(data))
         .then(() => {
           const cacheWriteTime = Date.now() - requestStart;
-          console.log(`💾 Cached blog by slug data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms | Slug: ${slug}`);
+          console.log(
+            `💾 Cached blog by slug data | DB Query: ${dbQueryTime}ms | Cache Write: ${cacheWriteTime}ms | Total: ${cacheWriteTime}ms | Slug: ${slug}`
+          );
         })
         .catch(err => console.error('Cache write error:', err.message));
       return originalSend.call(this, data);
@@ -334,7 +391,9 @@ export const cacheBlogBySlug = async (req, res, next) => {
     next();
   } catch (error) {
     const totalTime = Date.now() - requestStart;
-    console.log(`⚠️ Redis cache failed for blog by slug | Error: ${error.message} | Slug: ${slug}`);
+    console.log(
+      `⚠️ Redis cache failed for blog by slug | Error: ${error.message} | Slug: ${slug}`
+    );
     next();
   }
 };
@@ -375,7 +434,7 @@ export const requestTimer = (req, res, next) => {
 
   // Override res.json to capture timing
   const originalJson = res.json;
-  res.json = function(data) {
+  res.json = function (data) {
     const duration = Date.now() - start;
     const method = req.method;
     const url = req.originalUrl || req.url;
