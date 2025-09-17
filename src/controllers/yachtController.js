@@ -180,6 +180,8 @@ export const getAllYachts = async (req, res, next) => {
       title: 1,
       cabins: 1,
       bathrooms: 1,
+      passengerDayTrip: 1,
+      passengerOvernight: 1,
       guests: 1,
       guestsRange: 1,
       dayTripPrice: 1,
