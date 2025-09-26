@@ -1,10 +1,10 @@
 import dotenv from 'dotenv';
-dotenv.config();
-import app from './app.js';
-import http from 'http';
-import connectDB from './config/db.js';
 import express from 'express';
+import http from 'http';
 import path from 'path';
+import app from './app.js';
+import connectDB from './config/db.js';
+dotenv.config();
 // Load environment variables
 
 // Server setup
@@ -15,7 +15,7 @@ const server = http.createServer(app);
 app.use('/uploads', express.static(path.join(process.cwd(), 'src/uploads')));
 
 connectDB().then(() => {
-    server.listen(PORT, () => {
-        console.log(`Faraway is running on port ${PORT}`);
-    });
+  server.listen(PORT, () => {
+    console.log(`Faraway is running on port ${PORT}`);
+  });
 });

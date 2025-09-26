@@ -160,7 +160,6 @@ export const getAllYachts = async (req, res, next) => {
     if (error) {
       return next(new ApiError(error.details[0].message, 400));
     }
-
     const { page = 1, limit = 10, status } = req.query;
     const { skip, limit: parsedLimit } = paginate(page, limit);
 
@@ -194,6 +193,7 @@ export const getAllYachts = async (req, res, next) => {
       status: 1,
       updatedAt: 1,
       createdAt: 1,
+      tags: 1,
     };
 
     // Use Promise.all for parallel execution
