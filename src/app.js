@@ -5,8 +5,8 @@ import cors from 'cors';
 import express from 'express';
 import path from 'path';
 
-import cookieParser from 'cookie-parser';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import ApiErrorMiddleware from './middleware/ApiError.middleware.js';
 import { helmetMiddleware } from './middleware/helmet.middleware.js';
 import router from './router/index.js';
