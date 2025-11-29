@@ -45,6 +45,7 @@ const startServer = async () => {
           'https://faraway-admin-pannel.vercel.app',
           'https://faraway-psi.vercel.app',
           'https://www.faraway-yachting.com',
+          'https://dev-faraway-psi.vercel.app',
         ],
         credentials: true,
       })
