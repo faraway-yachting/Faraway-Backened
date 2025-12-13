@@ -5,6 +5,8 @@ import SuccessHandler from '../utils/SuccessHandler.js';
 import { clearBlogCache } from '../utils/cache.js';
 import { uploadToCloudinary } from '../utils/cloudinaryUtil.js';
 import paginate from '../utils/paginate.js';
+import { processTranslations } from '../utils/translationHelper.js';
+import { BLOG_FIELD_CONFIG } from '../utils/translationService.js';
 import {
   addBlogSchema,
   deleteBlogSchema,
@@ -104,12 +106,22 @@ export const addBlog = async (req, res, next) => {
       return next(new ApiError('Blog with this slug already exists', 409));
     }
 
-    const newBlog = await Blog.create(blogData);
+    const translations = await processTranslations(blogData, BLOG_FIELD_CONFIG);
+
+    // Prepare blog data with translations
+    const blogToCreate = {
+      slug: blogData.slug,
+      image: blogData.image,
+      status: blogData.status || 'draft',
+      translations: translations || {},
+    };
+
+    const newBlog = await Blog.create(blogToCreate);
     // Invalidate blog caches so lists reflect the new item
     await clearBlogCache();
 
     logger.info({
-      message: `✅ Blog created successfully: ${newBlog.title}`,
+      message: `✅ Blog created successfully: ${newBlog.translations?.en?.title || 'Untitled'}`,
       timestamp: new Date().toISOString(),
     });
 
@@ -295,14 +307,24 @@ export const editBlog = async (req, res, next) => {
       }
     }
 
+    let updateData = { ...blogData };
+    if (!blogData.translations && (blogData.title || blogData.shortDescription || blogData.detailDescription)) {
+      const currentTranslations = existingBlog.translations || {};
+      updateData.translations = await processTranslations(blogData, BLOG_FIELD_CONFIG, currentTranslations);
+      
+      delete updateData.title;
+      delete updateData.shortDescription;
+      delete updateData.detailDescription;
+    }
+
     // Update the blog
-    const updatedBlog = await Blog.findByIdAndUpdate(id, blogData, {
+    const updatedBlog = await Blog.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     });
 
     logger.info({
-      message: `✅ Blog updated successfully: ${updatedBlog.title}`,
+      message: `✅ Blog updated successfully: ${updatedBlog.translations?.en?.title || 'Untitled'}`,
       timestamp: new Date().toISOString(),
     });
 
@@ -333,7 +355,7 @@ export const deleteBlog = async (req, res, next) => {
     }
 
     logger.info({
-      message: `✅ Blog deleted successfully: ${blog.title}`,
+      message: `✅ Blog deleted successfully: ${blog.translations?.en?.title || 'Untitled'}`,
       timestamp: new Date().toISOString(),
     });
 
@@ -380,7 +402,7 @@ export const updateBlogStatus = async (req, res, next) => {
     );
 
     logger.info({
-      message: `✅ Blog status updated to ${status}: ${updatedBlog.title}`,
+      message: `✅ Blog status updated to ${status}: ${updatedBlog.translations?.en?.title || 'Untitled'}`,
       timestamp: new Date().toISOString(),
     });
 

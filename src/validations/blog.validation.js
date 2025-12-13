@@ -1,6 +1,6 @@
 import Joi from 'joi';
+import { createTranslationsSchema, BLOG_TRANSLATION_FIELDS } from '../utils/translationSchema.js';
 
-// Shared ObjectId validation
 const objectIdSchema = Joi.string()
   .length(24)
   .hex()
@@ -10,6 +10,8 @@ const objectIdSchema = Joi.string()
     'string.length': 'ID must be a valid MongoDB ObjectId',
     'string.hex': 'ID must be a valid MongoDB ObjectId',
   });
+
+const blogTranslationsSchema = createTranslationsSchema(BLOG_TRANSLATION_FIELDS, 'en');
 
 const addBlogSchema = Joi.object({
   slug: Joi.string()
@@ -23,13 +25,11 @@ const addBlogSchema = Joi.object({
       'string.pattern.base': 'Slug can only contain lowercase letters, numbers, and hyphens',
     }),
   title: Joi.string()
-    .required()
     .trim()
     .min(3)
     .max(200)
     .messages({
       'string.base': 'Title must be a string',
-      'any.required': 'Title is required',
       'string.min': 'Title must be at least 3 characters long',
       'string.max': 'Title must not exceed 200 characters',
     }),
@@ -39,32 +39,29 @@ const addBlogSchema = Joi.object({
       'any.required': 'Blog image is required',
     }),
   shortDescription: Joi.string()
-    .required()
     .trim()
     .min(10)
     .max(600)
     .messages({
       'string.base': 'Short description must be a string',
-      'any.required': 'Short description is required',
       'string.min': 'Short description must be at least 10 characters long',
-      'string.max': 'Short description must not exceed 500 characters',
+      'string.max': 'Short description must not exceed 600 characters',
     }),
   detailDescription: Joi.string()
-    .required()
     .trim()
     .min(10)
     .messages({
       'string.base': 'Detail description must be a string',
-      'any.required': 'Detail description is required',
       'string.min': 'Detail description must be at least 10 characters long',
     }),
+  translations: blogTranslationsSchema,
   status: Joi.string()
     .valid('draft', 'published')
     .default('draft')
     .messages({
       'any.only': 'Status must be either draft or published',
     }),
-});
+}).or('title', 'translations.en.title');
 
 const editBlogSchema = Joi.object({
   slug: Joi.string()
@@ -109,6 +106,7 @@ const editBlogSchema = Joi.object({
       'string.base': 'Detail description must be a string',
       'string.min': 'Detail description must be at least 10 characters long',
     }),
+  translations: blogTranslationsSchema,
   status: Joi.string()
     .valid('draft', 'published')
     .optional()

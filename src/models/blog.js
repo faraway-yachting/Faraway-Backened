@@ -1,5 +1,20 @@
 import mongoose from 'mongoose';
 
+const translationSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    trim: true,
+  },
+  shortDescription: {
+    type: String,
+    trim: true,
+  },
+  detailDescription: {
+    type: String,
+    trim: true,
+  },
+}, { _id: false });
+
 const blogSchema = new mongoose.Schema({
   slug: {
     type: String,
@@ -7,38 +22,46 @@ const blogSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    index: true, // This creates the index automatically
-  },
-  title: {
-    type: String,
-    required: true,
-    trim: true,
+    index: true,
   },
   image: {
     type: String,
     required: true,
-  },
-  shortDescription: {
-    type: String,
-    required: true,
-    trim: true,
-  },
-  detailDescription: {
-    type: String,
-    required: true,
-    trim: true,
   },
   status: {
     type: String,
     enum: ['draft', 'published'],
     default: 'draft',
   },
+  translations: {
+    en: {
+      type: translationSchema,
+      required: true,
+    },
+    fr: {
+      type: translationSchema,
+    },
+    de: {
+      type: translationSchema,
+    },
+    ru: {
+      type: translationSchema,
+    },
+    zh: {
+      type: translationSchema,
+    },
+    th: {
+      type: translationSchema,
+    },
+    ar: {
+      type: translationSchema,
+    },
+  },
 }, {
-  timestamps: true // Replacing createdAt and updatedAt
+  timestamps: true
 });
 
-// Add indexes for better query performance
-blogSchema.index({ status: 1, createdAt: -1 }); // For getAllBlogs with status filter
-blogSchema.index({ title: 1 }); // For title-based searches
+blogSchema.index({ status: 1, createdAt: -1 });
+blogSchema.index({ 'translations.en.title': 1 });
 
 export default mongoose.model('Blog', blogSchema);
