@@ -28,13 +28,22 @@ export async function processTranslations(data, fieldConfig, existingTranslation
   logger.info('✅ Translation completed');
 
   if (existingTranslations) {
+    // Update English with new content, retranslate all other languages
+    // This ensures all translations stay in sync with the updated English content
     return {
-      ...existingTranslations,
+      ...existingTranslations, // Preserve structure
       en: {
         ...existingTranslations.en,
-        ...englishContent,
+        ...englishContent, // Update English with new content
       },
-      ...translations,
+      // Use new translations (retranslated based on updated English)
+      // If translation fails for a language, fallback to existing translation
+      fr: translations.fr || existingTranslations.fr,
+      de: translations.de || existingTranslations.de,
+      ru: translations.ru || existingTranslations.ru,
+      zh: translations.zh || existingTranslations.zh,
+      th: translations.th || existingTranslations.th,
+      ar: translations.ar || existingTranslations.ar,
     };
   }
 
