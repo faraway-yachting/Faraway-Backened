@@ -132,7 +132,9 @@ export const addBlog = async (req, res, next) => {
     }
 
     // Check if slug already exists based on translations.en.slug
-    const existingBlog = await Blog.findOne({ 'translations.en.slug': blogData.translations?.en?.slug });
+    const existingBlog = await Blog.findOne({
+      'translations.en.slug': blogData.translations?.en?.slug,
+    });
     if (existingBlog) {
       logger.warn({
         message: `❌ Blog with slug already exists: ${blogData.slug}`,
@@ -141,8 +143,16 @@ export const addBlog = async (req, res, next) => {
       return next(new ApiError('Blog with this slug already exists', 409));
     }
 
+    // Build pure English source from translations.en and auto-translate
+    const en = blogData.translations.en;
+    const englishSource = {
+      slug: en.slug,
+      title: en.title,
+      shortDescription: en.shortDescription,
+      detailDescription: en.detailDescription,
+    };
 
-    const translations = await processTranslations(blogData, BLOG_FIELD_CONFIG);
+    const translations = await processTranslations(englishSource, BLOG_FIELD_CONFIG);
 
     // Prepare blog data with translations
     const blogToCreate = {
