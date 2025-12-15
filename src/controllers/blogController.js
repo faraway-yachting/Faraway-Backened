@@ -152,7 +152,18 @@ export const addBlog = async (req, res, next) => {
       detailDescription: en.detailDescription,
     };
 
-    const translations = await processTranslations(englishSource, BLOG_FIELD_CONFIG);
+    let translations;
+    try {
+      translations = await processTranslations(englishSource, BLOG_FIELD_CONFIG);
+    } catch (translationError) {
+      logger.error('❌ Blog translation failed:', translationError);
+      return next(
+        new ApiError(
+          'Failed to translate blog content. Please try again later.',
+          502
+        )
+      );
+    }
 
     // Prepare blog data with translations
     const blogToCreate = {
@@ -378,7 +389,21 @@ export const editBlog = async (req, res, next) => {
     let updateData = { ...blogData };
     if (!blogData.translations && (blogData.title || blogData.shortDescription || blogData.detailDescription)) {
       const currentTranslations = existingBlog.translations || {};
-      updateData.translations = await processTranslations(blogData, BLOG_FIELD_CONFIG, currentTranslations);
+      try {
+        updateData.translations = await processTranslations(
+          blogData,
+          BLOG_FIELD_CONFIG,
+          currentTranslations
+        );
+      } catch (translationError) {
+        logger.error('❌ Blog translation failed during update:', translationError);
+        return next(
+          new ApiError(
+            'Failed to translate blog content while updating. Please try again later.',
+            502
+          )
+        );
+      }
       
       delete updateData.title;
       delete updateData.shortDescription;

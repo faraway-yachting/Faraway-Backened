@@ -50,8 +50,9 @@ async function translateText(text, targetLanguage, useGPT4 = false) {
     const translatedText = response.choices[0]?.message?.content?.trim() || text;
     return translatedText;
   } catch (error) {
-    logger.error(`❌ Translation error for ${targetLanguage}:`, error.message);
-    return text;
+    logger.error(`❌ Translation error for ${targetLanguage}:`, error?.message || error);
+    // Propagate error so caller can decide whether to fail the whole operation
+    throw error;
   }
 }
 
@@ -67,38 +68,49 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
 
   logger.info(`🌐 Starting translation to ${targetLanguages.length} languages`);
 
-  for (const lang of targetLanguages) {
-    if (lang === 'en') continue;
+  // Translate all languages in parallel for maximum speed
+  const languagePromises = targetLanguages
+    .filter(lang => lang !== 'en')
+    .map(async (lang) => {
+      try {
+        logger.info(`🔄 Translating to ${SUPPORTED_LANGUAGES[lang]}...`);
 
-    try {
-      logger.info(`🔄 Translating to ${SUPPORTED_LANGUAGES[lang]}...`);
+        // Translate all fields for this language in parallel
+        const translationPromises = Object.keys(fieldConfig).map(async (fieldName) => {
+          const config = fieldConfig[fieldName];
+          const englishValue = englishContent[fieldName] || '';
+          
+          if (!englishValue) {
+            return { fieldName, translatedValue: '' };
+          }
 
-      const translationPromises = Object.keys(fieldConfig).map(async (fieldName) => {
-        const config = fieldConfig[fieldName];
-        const englishValue = englishContent[fieldName] || '';
+          const translatedValue = await translateText(englishValue, lang, config.useGPT4 || false);
+          return { fieldName, translatedValue: translatedValue || englishValue };
+        });
+
+        const translationResults = await Promise.all(translationPromises);
         
-        if (!englishValue) {
-          return { fieldName, translatedValue: '' };
-        }
+        const translatedObject = {};
+        translationResults.forEach(({ fieldName, translatedValue }) => {
+          translatedObject[fieldName] = translatedValue;
+        });
 
-        const translatedValue = await translateText(englishValue, lang, config.useGPT4 || false);
-        return { fieldName, translatedValue: translatedValue || englishValue };
-      });
+        logger.info(`✅ Translation to ${SUPPORTED_LANGUAGES[lang]} completed`);
+        return { lang, translatedObject };
+      } catch (error) {
+        logger.error(`❌ Failed to translate to ${lang}:`, error?.message || error);
+        // Fail fast: propagate error so no partial English-only blog is created
+        throw error;
+      }
+    });
 
-      const translationResults = await Promise.all(translationPromises);
-      
-      const translatedObject = {};
-      translationResults.forEach(({ fieldName, translatedValue }) => {
-        translatedObject[fieldName] = translatedValue;
-      });
-
-      translations[lang] = translatedObject;
-      logger.info(`✅ Translation to ${SUPPORTED_LANGUAGES[lang]} completed`);
-    } catch (error) {
-      logger.error(`❌ Failed to translate to ${lang}:`, error.message);
-      translations[lang] = { ...englishContent };
-    }
-  }
+  // Wait for all languages to complete in parallel
+  const languageResults = await Promise.all(languagePromises);
+  
+  // Build final translations object
+  languageResults.forEach(({ lang, translatedObject }) => {
+    translations[lang] = translatedObject;
+  });
 
   return translations;
 }
@@ -112,7 +124,7 @@ export const BLOG_FIELD_CONFIG = {
 
 export const YACHT_FIELD_CONFIG = {
   title: { useGPT4: false },
-  dayCharter: { useGPT4: true },
+  dayCharter: { useGPT4: true },     
   overnightCharter: { useGPT4: true },
   aboutThisBoat: { useGPT4: true },
   specifications: { useGPT4: true },
