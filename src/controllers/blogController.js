@@ -20,7 +20,7 @@ const normalizeSlug = (value) => value?.trim()?.toLowerCase();
 const isValidSlug = (value) => /^[a-z0-9-]+$/.test(value || '');
 
 const getSlugOrFail = (data) => {
-  const rawSlug = data?.slug || data?.translations?.en?.slug;
+  const rawSlug = data?.translations?.en?.slug || data?.slug;
   const normalized = normalizeSlug(rawSlug);
   if (!normalized) {
     throw new ApiError('Slug is required', 400);
@@ -37,6 +37,15 @@ export const addBlog = async (req, res, next) => {
     logger.info('📝 Add blog request received');
 
     let blogData = req.body;
+
+    // Parse translations if sent as JSON string (multipart/form-data)
+    if (blogData?.translations && typeof blogData.translations === 'string') {
+      try {
+        blogData.translations = JSON.parse(blogData.translations);
+      } catch (err) {
+        return next(new ApiError('Invalid translations format', 400));
+      }
+    }
 
     // Check if image is uploaded
     if (!req.files || !req.files.image || !req.files.image[0]) {
@@ -101,9 +110,13 @@ export const addBlog = async (req, res, next) => {
       }
     }
 
-    // Derive canonical slug from translations (or provided slug)
+    // Derive canonical slug from translations
     try {
-      blogData.slug = getSlugOrFail(blogData);
+      const canonicalSlug = getSlugOrFail(blogData);
+      if (!blogData.translations || !blogData.translations.en) {
+        return next(new ApiError('English translations (translations.en) are required', 400));
+      }
+      blogData.translations.en.slug = canonicalSlug;
     } catch (slugError) {
       return next(slugError);
     }
@@ -118,8 +131,8 @@ export const addBlog = async (req, res, next) => {
       return next(new ApiError(error.details[0].message, 400));
     }
 
-    // Check if slug already exists
-    const existingBlog = await Blog.findOne({ slug: blogData.slug });
+    // Check if slug already exists based on translations.en.slug
+    const existingBlog = await Blog.findOne({ 'translations.en.slug': blogData.translations?.en?.slug });
     if (existingBlog) {
       logger.warn({
         message: `❌ Blog with slug already exists: ${blogData.slug}`,
@@ -128,11 +141,11 @@ export const addBlog = async (req, res, next) => {
       return next(new ApiError('Blog with this slug already exists', 409));
     }
 
+
     const translations = await processTranslations(blogData, BLOG_FIELD_CONFIG);
 
     // Prepare blog data with translations
     const blogToCreate = {
-      slug: blogData.slug,
       image: blogData.image,
       status: blogData.status || 'draft',
       translations: translations || {},
@@ -247,7 +260,7 @@ export const getBlogBySlug = async (req, res, next) => {
     const { slug } = req.query;
 
     // Use lean() for better performance and return all fields
-    const blog = await Blog.findOne({ slug }).lean().exec();
+    const blog = await Blog.findOne({ 'translations.en.slug': slug }).lean().exec();
 
     if (!blog) {
       logger.warn({
@@ -270,6 +283,15 @@ export const editBlog = async (req, res, next) => {
 
     const { id } = req.query;
     let blogData = req.body;
+
+    // Parse translations if sent as JSON string (multipart/form-data)
+    if (blogData?.translations && typeof blogData.translations === 'string') {
+      try {
+        blogData.translations = JSON.parse(blogData.translations);
+      } catch (err) {
+        return next(new ApiError('Invalid translations format', 400));
+      }
+    }
 
     // Validate blog ID
     const { error: idError } = getBlogByIdSchema.validate({ id });
@@ -312,12 +334,14 @@ export const editBlog = async (req, res, next) => {
       }
     }
 
-    // Derive slug if provided (from body or translations)
-    let incomingSlug = blogData.slug;
-    if (blogData.slug || blogData.translations?.en?.slug) {
+    // Derive slug if provided (from translations.en.slug or body)
+    let incomingSlug = null;
+    if (blogData.translations?.en?.slug || blogData.slug) {
       try {
         incomingSlug = getSlugOrFail(blogData);
-        blogData.slug = incomingSlug;
+        if (!blogData.translations) blogData.translations = {};
+        if (!blogData.translations.en) blogData.translations.en = {};
+        blogData.translations.en.slug = incomingSlug;
       } catch (slugError) {
         return next(slugError);
       }
@@ -329,10 +353,11 @@ export const editBlog = async (req, res, next) => {
       return next(new ApiError(validationError.details[0].message, 400));
     }
 
-    // Check if slug is being updated and if it already exists
-    if (incomingSlug && incomingSlug !== existingBlog.slug) {
+    // Check if slug is being updated and if it already exists (based on translations.en.slug)
+    const currentSlug = existingBlog?.translations?.en?.slug;
+    if (incomingSlug && incomingSlug !== currentSlug) {
       const slugExists = await Blog.findOne({
-        slug: incomingSlug,
+        'translations.en.slug': incomingSlug,
         _id: { $ne: id },
       });
       if (slugExists) {
@@ -350,9 +375,13 @@ export const editBlog = async (req, res, next) => {
       delete updateData.detailDescription;
     }
 
-    // Ensure slug stays unchanged if not provided
+    // Ensure slug in translations.en stays unchanged if not provided
     if (!incomingSlug) {
-      updateData.slug = existingBlog.slug;
+      if (!updateData.translations) updateData.translations = existingBlog.translations;
+      else if (!updateData.translations.en) updateData.translations.en = existingBlog.translations?.en;
+      if (!updateData.translations?.en?.slug && existingBlog.translations?.en?.slug) {
+        updateData.translations.en.slug = existingBlog.translations.en.slug;
+      }
     }
 
     // Update the blog

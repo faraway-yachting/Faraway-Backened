@@ -26,7 +26,7 @@ const addBlogSchema = Joi.object({
     .messages({
       'any.only': 'Status must be either draft or published',
     }),
-});
+}).unknown(true);
 
 const editBlogSchema = Joi.object({
   image: Joi.string()
@@ -41,7 +41,7 @@ const editBlogSchema = Joi.object({
     .messages({
       'any.only': 'Status must be either draft or published',
     }),
-});
+}).unknown(true);
 
 const getAllBlogsSchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
