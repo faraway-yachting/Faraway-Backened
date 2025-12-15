@@ -50,6 +50,7 @@ export function createTranslationsSchema(fields, requiredLanguage = 'en') {
 }
 
 export const BLOG_TRANSLATION_FIELDS = [
+  { name: 'slug', type: 'string', min: 3, max: 200, required: true },
   { name: 'title', type: 'string', min: 3, max: 200, required: true },
   { name: 'shortDescription', type: 'string', min: 10, max: 600, required: true },
   { name: 'detailDescription', type: 'string', min: 10, required: true },

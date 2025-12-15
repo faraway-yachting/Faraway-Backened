@@ -1,6 +1,14 @@
 import mongoose from 'mongoose';
 
 const translationSchema = new mongoose.Schema({
+  slug: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true,
+    index: true,
+  },
   title: {
     type: String,
     trim: true,
@@ -16,14 +24,7 @@ const translationSchema = new mongoose.Schema({
 }, { _id: false });
 
 const blogSchema = new mongoose.Schema({
-  slug: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true,
-    trim: true,
-    index: true,
-  },
+  
   image: {
     type: String,
     required: true,

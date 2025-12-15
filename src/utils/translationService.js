@@ -104,6 +104,7 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
 }
 
 export const BLOG_FIELD_CONFIG = {
+  slug: { useGPT4: false },
   title: { useGPT4: false },
   shortDescription: { useGPT4: false },
   detailDescription: { useGPT4: true },

@@ -16,6 +16,21 @@ import {
   updateBlogStatusSchema,
 } from '../validations/blog.validation.js';
 
+const normalizeSlug = (value) => value?.trim()?.toLowerCase();
+const isValidSlug = (value) => /^[a-z0-9-]+$/.test(value || '');
+
+const getSlugOrFail = (data) => {
+  const rawSlug = data?.slug || data?.translations?.en?.slug;
+  const normalized = normalizeSlug(rawSlug);
+  if (!normalized) {
+    throw new ApiError('Slug is required', 400);
+  }
+  if (!isValidSlug(normalized)) {
+    throw new ApiError('Slug can only contain lowercase letters, numbers, and hyphens', 400);
+  }
+  return normalized;
+};
+
 // Add a new blog
 export const addBlog = async (req, res, next) => {
   try {
@@ -84,6 +99,13 @@ export const addBlog = async (req, res, next) => {
           )
         );
       }
+    }
+
+    // Derive canonical slug from translations (or provided slug)
+    try {
+      blogData.slug = getSlugOrFail(blogData);
+    } catch (slugError) {
+      return next(slugError);
     }
 
     // Now validate blogData
@@ -290,6 +312,17 @@ export const editBlog = async (req, res, next) => {
       }
     }
 
+    // Derive slug if provided (from body or translations)
+    let incomingSlug = blogData.slug;
+    if (blogData.slug || blogData.translations?.en?.slug) {
+      try {
+        incomingSlug = getSlugOrFail(blogData);
+        blogData.slug = incomingSlug;
+      } catch (slugError) {
+        return next(slugError);
+      }
+    }
+
     // Validate blog data
     const { error: validationError } = editBlogSchema.validate(blogData);
     if (validationError) {
@@ -297,9 +330,9 @@ export const editBlog = async (req, res, next) => {
     }
 
     // Check if slug is being updated and if it already exists
-    if (blogData.slug && blogData.slug !== existingBlog.slug) {
+    if (incomingSlug && incomingSlug !== existingBlog.slug) {
       const slugExists = await Blog.findOne({
-        slug: blogData.slug,
+        slug: incomingSlug,
         _id: { $ne: id },
       });
       if (slugExists) {
@@ -315,6 +348,11 @@ export const editBlog = async (req, res, next) => {
       delete updateData.title;
       delete updateData.shortDescription;
       delete updateData.detailDescription;
+    }
+
+    // Ensure slug stays unchanged if not provided
+    if (!incomingSlug) {
+      updateData.slug = existingBlog.slug;
     }
 
     // Update the blog
