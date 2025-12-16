@@ -43,6 +43,7 @@ const startServer = async () => {
           'http://localhost:3000','http://localhost:3001',
           'https://fa-taupe.vercel.app',
           'https://faraway-admin-pannel.vercel.app',
+          'https://faraway-admin-pannel-dev.vercel.app',
           'https://faraway-psi.vercel.app',
           'https://www.faraway-yachting.com',
           'https://dev-faraway-psi.vercel.app',
