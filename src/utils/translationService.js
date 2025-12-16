@@ -17,26 +17,72 @@ export const SUPPORTED_LANGUAGES = {
 
 export const DEFAULT_TARGET_LANGUAGES = ['fr', 'de', 'ru', 'zh', 'th', 'ar'];
 
-async function translateText(text, targetLanguage, useGPT4 = false) {
+// Normalize slug to URL-friendly format (preserves Unicode for non-Latin languages)
+function normalizeSlug(slug) {
+  if (!slug) return '';
+  
+  // Check if slug is Latin-based (only ASCII letters, numbers, hyphens, spaces)
+  const isLatinBased = /^[a-zA-Z0-9\s\-_]+$/.test(slug);
+  
+  let normalized = slug.trim();
+  
+  // Only lowercase for Latin-based slugs (preserve Unicode case)
+  if (isLatinBased) {
+    normalized = normalized.toLowerCase();
+  }
+  
+  // Replace spaces, underscores, and multiple hyphens with single hyphen
+  normalized = normalized
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    // Remove leading/trailing hyphens
+    .replace(/^-+|-+$/g, '')
+    // Only remove truly problematic URL characters (preserve Unicode like Chinese, Arabic, Thai)
+    .replace(/[<>"|\\^`{}[\]]/g, '');
+  
+  return normalized;
+}
+
+async function translateText(text, targetLanguage, useGPT4 = false, isSlug = false) {
   if (!text || !text.trim()) {
     return '';
   }
 
   if (!process.env.OPENAI_API_KEY) {
     logger.warn('⚠️ OPENAI_API_KEY not set, skipping translation');
-    return text;
+    return isSlug ? normalizeSlug(text) : text;
   }
 
   try {
     const model = useGPT4 ? 'gpt-4' : 'gpt-4o-mini';
     const languageName = SUPPORTED_LANGUAGES[targetLanguage] || targetLanguage;
 
+    // Special handling for slugs - request URL-friendly format
+    const systemPrompt = isSlug
+      ? `You are a professional translator. Translate the following English URL slug to ${languageName}. 
+
+CRITICAL REQUIREMENTS:
+1. You MUST translate the slug to ${languageName} - NEVER return the English version
+2. For Latin-based languages (French, German, Russian): Use lowercase with hyphens (e.g., "guide-familial")
+3. For non-Latin languages (Chinese, Arabic, Thai): Use native characters/script (e.g., Chinese: "家庭友好指南", Arabic: "دليل-عائلي")
+4. Make it URL-friendly: lowercase, use hyphens for spaces, no special characters except hyphens
+5. Return ONLY the translated slug, nothing else - no explanations, no English text
+
+Example: English slug "family-friendly-guide" should become:
+- French: "guide-familial"
+- Chinese: "家庭友好指南" 
+- Arabic: "دليل-عائلي"
+- Thai: "คู่มือ-ครอบครัว"
+
+Now translate: "${text}" to ${languageName}.`
+      : `You are a professional translator. Translate the following text to ${languageName}. Maintain the same HTML structure, formatting, and style. Only return the translated text without any explanations or additional content.`;
+
     const response = await openai.chat.completions.create({
       model: model,
       messages: [
         {
           role: 'system',
-          content: `You are a professional translator. Translate the following text to ${languageName}. Maintain the same HTML structure, formatting, and style. Only return the translated text without any explanations or additional content.`,
+          content: systemPrompt,
         },
         {
           role: 'user',
@@ -47,7 +93,13 @@ async function translateText(text, targetLanguage, useGPT4 = false) {
       max_tokens: useGPT4 ? 4000 : 1000,
     });
 
-    const translatedText = response.choices[0]?.message?.content?.trim() || text;
+    let translatedText = response.choices[0]?.message?.content?.trim() || text;
+    
+    // Normalize slug if it's a slug field
+    if (isSlug) {
+      translatedText = normalizeSlug(translatedText);
+    }
+    
     return translatedText;
   } catch (error) {
     logger.error(`❌ Translation error for ${targetLanguage}:`, error?.message || error);
@@ -84,7 +136,52 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
             return { fieldName, translatedValue: '' };
           }
 
-          const translatedValue = await translateText(englishValue, lang, config.useGPT4 || false);
+          // Special handling for slug field - ensure URL-friendly format
+          const isSlug = fieldName === 'slug';
+          let translatedValue = await translateText(englishValue, lang, config.useGPT4 || false, isSlug);
+          
+          // For slugs, ensure we have a valid translated value (not empty, not same as English)
+          if (isSlug) {
+            const normalizedTranslated = normalizeSlug(translatedValue);
+            const normalizedEnglish = normalizeSlug(englishValue);
+            
+            // If translation returned empty or same as English, retry with more explicit prompt
+            if (!normalizedTranslated || normalizedTranslated === normalizedEnglish) {
+              logger.warn(`⚠️ Slug translation for ${lang} returned empty or unchanged: "${translatedValue}". Retrying with explicit translation request...`);
+              
+              // Retry with a more explicit prompt that emphasizes translation
+              try {
+                const retryPrompt = `Translate this English URL slug to ${SUPPORTED_LANGUAGES[lang]}: "${englishValue}". You MUST translate it to ${SUPPORTED_LANGUAGES[lang]}, do NOT return English. Return ONLY the translated slug in ${SUPPORTED_LANGUAGES[lang]} language, URL-friendly format.`;
+                const retryResponse = await openai.chat.completions.create({
+                  model: config.useGPT4 ? 'gpt-4' : 'gpt-4o-mini',
+                  messages: [
+                    { role: 'system', content: retryPrompt },
+                    { role: 'user', content: englishValue },
+                  ],
+                  temperature: 0.3,
+                  max_tokens: 200,
+                });
+                
+                const retryTranslated = retryResponse.choices[0]?.message?.content?.trim() || '';
+                const retryNormalized = normalizeSlug(retryTranslated);
+                
+                if (retryNormalized && retryNormalized !== normalizedEnglish) {
+                  logger.info(`✅ Retry successful for ${lang} slug: "${retryNormalized}"`);
+                  translatedValue = retryNormalized;
+                } else {
+                  logger.error(`❌ Retry failed for ${lang} slug. Still got: "${retryTranslated}"`);
+                  // Don't use English - throw error to prevent saving incomplete translation
+                  throw new Error(`Failed to translate slug to ${lang}. Translation returned empty or English.`);
+                }
+              } catch (retryError) {
+                logger.error(`❌ Retry translation failed for ${lang}:`, retryError);
+                throw new Error(`Failed to translate slug to ${lang}: ${retryError.message}`);
+              }
+            }
+            
+            return { fieldName, translatedValue: normalizeSlug(translatedValue) };
+          }
+          
           return { fieldName, translatedValue: translatedValue || englishValue };
         });
 

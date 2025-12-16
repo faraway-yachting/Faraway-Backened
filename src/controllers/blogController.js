@@ -279,9 +279,62 @@ export const getBlogBySlug = async (req, res, next) => {
     }
 
     const { slug } = req.query;
+    
+    // Decode URL-encoded slug (handles Unicode characters like Arabic, Chinese, Thai)
+    let decodedSlug = slug;
+    try {
+      decodedSlug = decodeURIComponent(slug);
+    } catch (e) {
+      // If decoding fails, use original slug
+      logger.warn(`Failed to decode slug: ${slug}`, e);
+    }
+    
+    // Normalize: trim whitespace, lowercase only for Latin-based languages
+    // For Unicode languages (Arabic, Chinese, Thai), preserve original case
+    const trimmedSlug = decodedSlug?.trim() || '';
+    
+    // For Latin-based languages, also lowercase for comparison
+    // For Unicode languages, keep as-is
+    const isLatinBased = /^[a-zA-Z0-9\s\-_]+$/.test(trimmedSlug);
+    const normalizedSlug = isLatinBased ? trimmedSlug.toLowerCase() : trimmedSlug;
 
-    // Use lean() for better performance and return all fields
-    const blog = await Blog.findOne({ 'translations.en.slug': slug }).lean().exec();
+    logger.info(`🔍 Searching for blog with slug: "${slug}" (decoded: "${decodedSlug}", normalized: "${normalizedSlug}")`);
+
+    // Build search conditions for all languages
+    // Try both original slug and normalized versions to handle all cases
+    const searchConditions = [
+      { 'translations.en.slug': normalizedSlug },
+      { 'translations.en.slug': trimmedSlug },
+      { 'translations.ar.slug': normalizedSlug },
+      { 'translations.ar.slug': trimmedSlug },
+      { 'translations.fr.slug': normalizedSlug },
+      { 'translations.fr.slug': trimmedSlug },
+      { 'translations.de.slug': normalizedSlug },
+      { 'translations.de.slug': trimmedSlug },
+      { 'translations.ru.slug': normalizedSlug },
+      { 'translations.ru.slug': trimmedSlug },
+      { 'translations.zh.slug': normalizedSlug },
+      { 'translations.zh.slug': trimmedSlug },
+      { 'translations.th.slug': normalizedSlug },
+      { 'translations.th.slug': trimmedSlug },
+    ];
+
+    // Also try the original slug (in case it's already in the correct format)
+    if (slug !== decodedSlug) {
+      searchConditions.push(
+        { 'translations.en.slug': slug },
+        { 'translations.ar.slug': slug },
+        { 'translations.fr.slug': slug },
+        { 'translations.de.slug': slug },
+        { 'translations.ru.slug': slug },
+        { 'translations.zh.slug': slug },
+        { 'translations.th.slug': slug },
+      );
+    }
+
+    const blog = await Blog.findOne({
+      $or: searchConditions,
+    }).lean().exec();
 
     if (!blog) {
       logger.warn({
