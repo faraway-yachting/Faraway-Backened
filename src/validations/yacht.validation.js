@@ -1,74 +1,75 @@
 import Joi from 'joi';
+import { createTranslationsSchema, YACHT_TRANSLATION_FIELDS } from '../utils/translationSchema.js';
+
+const yachtTranslationsSchema = createTranslationsSchema(YACHT_TRANSLATION_FIELDS, 'en');
 
 const addyachtSchema = Joi.object({
   boatType: Joi.string().required().messages({
     'string.base': 'Boat Type must be a string',
     'any.required': 'Boat Type is required',
   }),
-  title: Joi.string().required().messages({
-    'any.required': 'Title is required',
-    'string.base': 'Title must be a string',
-  }),
+  // Title is now expected under translations.en.title; keep optional legacy support
+  title: Joi.string().optional(),
   price: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Price is required'
+    .required()
+    .messages({
+      'any.required': 'Price is required',
     }),
   capacity: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Category is required'
+    .required()
+    .messages({
+      'any.required': 'Category is required',
     }),
   length: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Length is required'
+    .required()
+    .messages({
+      'any.required': 'Length is required',
     }),
   lengthRange: Joi.string().allow('').optional(),
   cabins: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Cabins is required'
+    .required()
+    .messages({
+      'any.required': 'Cabins is required',
     }),
   bathrooms: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Bathrooms is required'
+    .required()
+    .messages({
+      'any.required': 'Bathrooms is required',
     }),
   passengerDayTrip: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Passenger Day Trip is required'
+    .required()
+    .messages({
+      'any.required': 'Passenger Day Trip is required',
     }),
   passengerOvernight: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Passenger Overnight is required'
+    .required()
+    .messages({
+      'any.required': 'Passenger Overnight is required',
     }),
   guests: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Guests is required'
+    .required()
+    .messages({
+      'any.required': 'Guests is required',
     }),
   guestsRange: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Guests Range is required'
+    .required()
+    .messages({
+      'any.required': 'Guests Range is required',
     }),
   dayTripPrice: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Day Trip Price is required'
+    .required()
+    .messages({
+      'any.required': 'Day Trip Price is required',
     }),
   overnightPrice: Joi.string()
-  .required()
-  .messages({
-    'any.required': 'Overnight Price is required'
+    .required()
+    .messages({
+      'any.required': 'Overnight Price is required',
     }),
   daytripPriceEuro: Joi.string()
-  .required()
-  .messages({
-     'any.required': 'Daytrip Price (Euro) is required'
+    .required()
+    .messages({
+      'any.required': 'Daytrip Price (Euro) is required',
     }),
 
   // primaryImage should exist (can be any type)
@@ -81,6 +82,7 @@ const addyachtSchema = Joi.object({
   // galleryImages - no validation needed
   galleryImages: Joi.any(),
 
+  // Legacy textual fields (translations expected instead)
   dayCharter: Joi.string().allow(''),
   overnightCharter: Joi.string().allow(''),
   aboutThisBoat: Joi.string().allow(''),
@@ -94,13 +96,13 @@ const addyachtSchema = Joi.object({
   cruisingSpeed: Joi.string().allow('').optional(),
   lengthOverall: Joi.string().allow('').optional(),
   fuelCapacity: Joi.string().allow('').optional(),
-    type: Joi.string()
-  .valid('crewed', 'bareboat')
-  .required()
-  .messages({
-    'any.required': 'Yacht type is required',
-    'any.only': 'Yacht type must be either crewed or bareboat',
-  }),
+  type: Joi.string()
+    .valid('crewed', 'bareboat')
+    .required()
+    .messages({
+      'any.required': 'Yacht type is required',
+      'any.only': 'Yacht type must be either crewed or bareboat',
+    }),
   status: Joi.string()
     .valid('draft', 'published')
     .default('draft')
@@ -111,6 +113,7 @@ const addyachtSchema = Joi.object({
   code: Joi.string().allow('').optional(),
   tags: Joi.array().items(Joi.string()).optional(),
   slug: Joi.string().allow('').optional(),
+  translations: yachtTranslationsSchema.required(),
 });
 
 // Validation for getAllYachts with optional status filter
@@ -135,17 +138,14 @@ const getYachtByIdSchema = Joi.object({
     })
 });
 
-// For getYachtBySlug, require 'slug' as a slug string
+// For getYachtBySlug, require 'slug' as a slug string (canonical or localized)
 const getYachtBySlugSchema = Joi.object({
   slug: Joi.string()
     .trim()
-    .lowercase()
-    .pattern(/^[a-z0-9-]+$/)
     .required()
     .messages({
       'any.required': 'Yacht slug is required',
-      'string.pattern.base': 'Slug can only contain lowercase letters, numbers, and hyphens'
-    })
+    }),
 });
 const deleteYachtSchema = Joi.object({
   id: Joi.string()
@@ -159,8 +159,13 @@ const deleteYachtSchema = Joi.object({
   })
 });
 
-// Edit yacht schema - exactly same as add (full payload required)
-const editYachtSchema = addyachtSchema;
+// Edit yacht schema - allow partial updates but require translations object when present
+const editYachtSchema = addyachtSchema.fork(
+  Object.keys(addyachtSchema.describe().keys),
+  (schema) => schema.optional()
+).keys({
+  translations: yachtTranslationsSchema.optional(),
+});
 
 // Status update validation schema
 const updateStatusSchema = Joi.object({

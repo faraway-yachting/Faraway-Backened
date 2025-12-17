@@ -132,18 +132,22 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
           const config = fieldConfig[fieldName];
           const englishValue = englishContent[fieldName] || '';
           
-          if (!englishValue) {
-            return { fieldName, translatedValue: '' };
+          // Handle array fields (e.g., tags) by joining to a comma-separated string
+          const isArrayField = Array.isArray(englishValue);
+          const normalizedInput = isArrayField ? englishValue.join(', ') : englishValue;
+          
+          if (!normalizedInput) {
+            return { fieldName, translatedValue: isArrayField ? [] : '' };
           }
 
           // Special handling for slug field - ensure URL-friendly format
           const isSlug = fieldName === 'slug';
-          let translatedValue = await translateText(englishValue, lang, config.useGPT4 || false, isSlug);
+          let translatedValue = await translateText(normalizedInput, lang, config.useGPT4 || false, isSlug);
           
           // For slugs, ensure we have a valid translated value (not empty, not same as English)
           if (isSlug) {
             const normalizedTranslated = normalizeSlug(translatedValue);
-            const normalizedEnglish = normalizeSlug(englishValue);
+            const normalizedEnglish = normalizeSlug(normalizedInput);
             
             // If translation returned empty or same as English, retry with more explicit prompt
             if (!normalizedTranslated || normalizedTranslated === normalizedEnglish) {
@@ -180,6 +184,12 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
             }
             
             return { fieldName, translatedValue: normalizeSlug(translatedValue) };
+          }
+          
+          // Convert back to array for array fields
+          if (isArrayField) {
+            const parts = (translatedValue || '').split(',').map(p => p.trim()).filter(Boolean);
+            return { fieldName, translatedValue: parts.length ? parts : englishValue };
           }
           
           return { fieldName, translatedValue: translatedValue || englishValue };
@@ -220,10 +230,12 @@ export const BLOG_FIELD_CONFIG = {
 };
 
 export const YACHT_FIELD_CONFIG = {
+  slug: { useGPT4: false },
   title: { useGPT4: false },
-  dayCharter: { useGPT4: true },     
+  dayCharter: { useGPT4: true },
   overnightCharter: { useGPT4: true },
   aboutThisBoat: { useGPT4: true },
   specifications: { useGPT4: true },
   boatLayout: { useGPT4: true },
+  tags: { useGPT4: false }, // translate tag names; no GPT4 needed
 };

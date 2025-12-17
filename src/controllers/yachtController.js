@@ -13,11 +13,44 @@ import {
   getYachtByIdSchema,
   getYachtBySlugSchema,
 } from '../validations/yacht.validation.js';
+import { processTranslations } from '../utils/translationHelper.js';
+import { YACHT_FIELD_CONFIG } from '../utils/translationService.js';
+
+const normalizeSlug = (value) =>
+  value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const isValidSlug = (value) => /^[a-z0-9-]+$/.test(value || '');
+
+const getSlugOrFail = (data) => {
+  const rawSlug = data?.translations?.en?.slug || data?.slug;
+  const normalized = normalizeSlug(rawSlug);
+  if (!normalized) {
+    throw new ApiError('Slug is required', 400);
+  }
+  if (!isValidSlug(normalized)) {
+    throw new ApiError('Slug can only contain lowercase letters, numbers, and hyphens', 400);
+  }
+  return normalized;
+};
 
 // Add a new yacht
 export const addYacht = async (req, res, next) => {
   try {
     let yachtData = req.body;
+
+    // Parse translations if sent as JSON string (multipart/form-data)
+    if (yachtData?.translations && typeof yachtData.translations === 'string') {
+      try {
+        yachtData.translations = JSON.parse(yachtData.translations);
+      } catch (err) {
+        return next(new ApiError('Invalid translations format', 400));
+      }
+    }
 
     // Check if primary image is uploaded
     if (!req.files || !req.files.primaryImage || !req.files.primaryImage[0]) {
@@ -118,23 +151,76 @@ export const addYacht = async (req, res, next) => {
       }
     }
 
-    // Now validate yachtData
-    const { error } = addyachtSchema.validate(yachtData);
+    // Derive canonical slug from English translation and enforce presence of translations
+    try {
+      const canonicalSlug = getSlugOrFail(yachtData);
+      if (!yachtData.translations || !yachtData.translations.en) {
+        return next(new ApiError('English translations (translations.en) are required', 400));
+      }
+      yachtData.translations.en.slug = canonicalSlug;
+      yachtData.slug = canonicalSlug; // keep top-level slug for backward compatibility
+    } catch (slugError) {
+      return next(slugError);
+    }
+
+    // Build English source for translation
+    const en = yachtData.translations.en;
+    const englishSource = {
+      slug: en.slug,
+      title: en.title,
+      dayCharter: en.dayCharter,
+      overnightCharter: en.overnightCharter,
+      aboutThisBoat: en.aboutThisBoat,
+      specifications: en.specifications,
+      boatLayout: en.boatLayout,
+      tags: en.tags || yachtData.tags || [],
+    };
+
+    // Run Joi validation after slug + translations are normalized
+    const { error } = addyachtSchema.validate({
+      ...yachtData,
+      translations: yachtData.translations,
+    });
     if (error) {
       return next(new ApiError(error.details[0].message, 400));
     }
 
-    // Enforce slug uniqueness (if provided)
-    if (yachtData.slug) {
-      const existingSlug = await Yacht.findOne({ slug: yachtData.slug })
-        .lean()
-        .exec();
-      if (existingSlug) {
-        return next(new ApiError('Yacht with this slug already exists', 409));
-      }
+    // Enforce slug uniqueness based on canonical English slug
+    const existingSlug = await Yacht.findOne({ slug: yachtData.slug })
+      .lean()
+      .exec();
+    if (existingSlug) {
+      return next(new ApiError('Yacht with this slug already exists', 409));
     }
 
-    const newYacht = await Yacht.create(yachtData);
+    // Auto-translate to all configured locales
+    let translations;
+    try {
+      translations = await processTranslations(englishSource, YACHT_FIELD_CONFIG);
+    } catch (translationError) {
+      return next(
+        new ApiError(
+          'Failed to translate yacht content. Please try again later.',
+          502
+        )
+      );
+    }
+
+    const yachtToCreate = {
+      ...yachtData,
+      slug: englishSource.slug,
+      translations,
+      // keep legacy top-level fields in sync with English so existing consumers continue to work
+      title: englishSource.title,
+      dayCharter: englishSource.dayCharter,
+      overnightCharter: englishSource.overnightCharter,
+      aboutThisBoat: englishSource.aboutThisBoat,
+      specifications: englishSource.specifications,
+      boatLayout: englishSource.boatLayout,
+      tags: englishSource.tags || [],
+    };
+
+    const newYacht = await Yacht.create(yachtToCreate);
     // Invalidate caches so lists reflect the new yacht
     await clearYachtCache();
     // Map image filenames to URLs and return new yacht
@@ -280,8 +366,52 @@ export const getYachtBySlug = async (req, res, next) => {
 
     const { slug } = req.query;
 
+    // Decode and normalize slug (similar to blog flow)
+    let decodedSlug = slug;
+    try {
+      decodedSlug = decodeURIComponent(slug);
+    } catch (e) {
+      // fallback to original
+    }
+    const trimmedSlug = decodedSlug?.trim() || '';
+    const isLatinBased = /^[a-zA-Z0-9\s\-_]+$/.test(trimmedSlug);
+    const normalizedSlug = isLatinBased ? trimmedSlug.toLowerCase() : trimmedSlug;
+
+    const searchConditions = [
+      { slug: normalizedSlug },
+      { slug: trimmedSlug },
+      { 'translations.en.slug': normalizedSlug },
+      { 'translations.en.slug': trimmedSlug },
+      { 'translations.fr.slug': normalizedSlug },
+      { 'translations.fr.slug': trimmedSlug },
+      { 'translations.de.slug': normalizedSlug },
+      { 'translations.de.slug': trimmedSlug },
+      { 'translations.ru.slug': normalizedSlug },
+      { 'translations.ru.slug': trimmedSlug },
+      { 'translations.zh.slug': normalizedSlug },
+      { 'translations.zh.slug': trimmedSlug },
+      { 'translations.th.slug': normalizedSlug },
+      { 'translations.th.slug': trimmedSlug },
+      { 'translations.ar.slug': normalizedSlug },
+      { 'translations.ar.slug': trimmedSlug },
+    ];
+
+    // Also try raw slug if different from decoded
+    if (slug !== decodedSlug) {
+      searchConditions.push(
+        { slug },
+        { 'translations.en.slug': slug },
+        { 'translations.fr.slug': slug },
+        { 'translations.de.slug': slug },
+        { 'translations.ru.slug': slug },
+        { 'translations.zh.slug': slug },
+        { 'translations.th.slug': slug },
+        { 'translations.ar.slug': slug },
+      );
+    }
+
     // Use lean() for better performance and select only needed fields
-    const yacht = await Yacht.findOne({ slug }).lean().exec();
+    const yacht = await Yacht.findOne({ $or: searchConditions }).lean().exec();
 
     if (!yacht) {
       return next(new ApiError('Yacht not found', 404));
@@ -325,6 +455,15 @@ export const editYacht = async (req, res, next) => {
   try {
     const { id } = req.query;
     let yachtData = req.body;
+
+    // Parse translations if sent as JSON string (multipart/form-data)
+    if (yachtData?.translations && typeof yachtData.translations === 'string') {
+      try {
+        yachtData.translations = JSON.parse(yachtData.translations);
+      } catch (err) {
+        return next(new ApiError('Invalid translations format', 400));
+      }
+    }
 
     // Validate yacht ID
     const { error: idError } = getYachtByIdSchema.validate({ id });
@@ -385,6 +524,20 @@ export const editYacht = async (req, res, next) => {
       yachtData.galleryImages = newGalleryImages;
     }
 
+    // Derive slug if provided (from translations.en.slug or body.slug)
+    let incomingSlug = null;
+    if (yachtData.translations?.en?.slug || yachtData.slug) {
+      try {
+        incomingSlug = getSlugOrFail(yachtData);
+        if (!yachtData.translations) yachtData.translations = {};
+        if (!yachtData.translations.en) yachtData.translations.en = {};
+        yachtData.translations.en.slug = incomingSlug;
+        yachtData.slug = incomingSlug;
+      } catch (slugError) {
+        return next(slugError);
+      }
+    }
+
     // Validate yacht data (make all fields optional for editing)
     const { error: validationError } = editYachtSchema.validate(yachtData);
     if (validationError) {
@@ -392,9 +545,10 @@ export const editYacht = async (req, res, next) => {
     }
 
     // If slug is being changed, ensure uniqueness
-    if (yachtData.slug && yachtData.slug !== existingYacht.slug) {
+    const currentSlug = existingYacht?.slug;
+    if (incomingSlug && incomingSlug !== currentSlug) {
       const slugExists = await Yacht.findOne({
-        slug: yachtData.slug,
+        slug: incomingSlug,
         _id: { $ne: id },
       })
         .lean()
@@ -404,8 +558,78 @@ export const editYacht = async (req, res, next) => {
       }
     }
 
+    const currentTranslations = existingYacht.translations || {};
+    let updateData = { ...yachtData };
+
+    // If no translations provided but English fields were sent, auto-translate based on English
+    const hasEnglishFields =
+      yachtData.title ||
+      yachtData.dayCharter ||
+      yachtData.overnightCharter ||
+      yachtData.aboutThisBoat ||
+      yachtData.specifications ||
+      yachtData.boatLayout ||
+      (Array.isArray(yachtData.tags) && yachtData.tags.length > 0) ||
+      incomingSlug;
+
+    if (!yachtData.translations && hasEnglishFields) {
+      const englishSource = {
+        slug: incomingSlug || currentTranslations?.en?.slug || existingYacht.slug,
+        title: yachtData.title || currentTranslations?.en?.title,
+        dayCharter: yachtData.dayCharter || currentTranslations?.en?.dayCharter,
+        overnightCharter: yachtData.overnightCharter || currentTranslations?.en?.overnightCharter,
+        aboutThisBoat: yachtData.aboutThisBoat || currentTranslations?.en?.aboutThisBoat,
+        specifications: yachtData.specifications || currentTranslations?.en?.specifications,
+        boatLayout: yachtData.boatLayout || currentTranslations?.en?.boatLayout,
+        tags: yachtData.tags || currentTranslations?.en?.tags || [],
+      };
+
+      try {
+        updateData.translations = await processTranslations(
+          englishSource,
+          YACHT_FIELD_CONFIG,
+          currentTranslations
+        );
+      } catch (translationError) {
+        return next(
+          new ApiError(
+            'Failed to translate yacht content while updating. Please try again later.',
+            502
+          )
+        );
+      }
+
+      // keep legacy top-level fields in sync with English
+      updateData.slug = englishSource.slug;
+      updateData.title = englishSource.title;
+      updateData.dayCharter = englishSource.dayCharter;
+      updateData.overnightCharter = englishSource.overnightCharter;
+      updateData.aboutThisBoat = englishSource.aboutThisBoat;
+      updateData.specifications = englishSource.specifications;
+      updateData.boatLayout = englishSource.boatLayout;
+      updateData.tags = englishSource.tags;
+    }
+
+    // Ensure slug remains set from existing translations if none provided
+    if (!incomingSlug && currentTranslations?.en?.slug && !updateData.slug) {
+      updateData.slug = currentTranslations.en.slug;
+    }
+
+    // Keep legacy top-level fields in sync when translations are provided directly
+    if (updateData.translations?.en) {
+      const en = updateData.translations.en;
+      if (en.slug) updateData.slug = en.slug;
+      if (en.title && !updateData.title) updateData.title = en.title;
+      if (en.dayCharter && !updateData.dayCharter) updateData.dayCharter = en.dayCharter;
+      if (en.overnightCharter && !updateData.overnightCharter) updateData.overnightCharter = en.overnightCharter;
+      if (en.aboutThisBoat && !updateData.aboutThisBoat) updateData.aboutThisBoat = en.aboutThisBoat;
+      if (en.specifications && !updateData.specifications) updateData.specifications = en.specifications;
+      if (en.boatLayout && !updateData.boatLayout) updateData.boatLayout = en.boatLayout;
+      if (en.tags && !updateData.tags) updateData.tags = en.tags;
+    }
+
     // Update the yacht
-    const updatedYacht = await Yacht.findByIdAndUpdate(id, yachtData, {
+    const updatedYacht = await Yacht.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     });

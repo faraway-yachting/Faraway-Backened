@@ -5,7 +5,8 @@ export function createTranslationContentSchema(fields) {
   
   fields.forEach(field => {
     if (field.type === 'string') {
-      schemaObject[field.name] = Joi.string().trim().optional();
+      // Optional string fields should allow empty strings
+      schemaObject[field.name] = Joi.string().trim().allow('').optional();
       if (field.min) schemaObject[field.name] = schemaObject[field.name].min(field.min);
       if (field.max) schemaObject[field.name] = schemaObject[field.name].max(field.max);
     } else if (field.type === 'array') {
@@ -23,10 +24,11 @@ export function createTranslationsSchema(fields, requiredLanguage = 'en') {
     en: Joi.object(
       fields.reduce((acc, field) => {
         if (field.type === 'string') {
-          acc[field.name] = Joi.string().trim();
-          if (field.min) acc[field.name] = acc[field.name].min(field.min);
-          if (field.max) acc[field.name] = acc[field.name].max(field.max);
-          if (field.required) acc[field.name] = acc[field.name].required();
+          let schema = Joi.string().trim().allow('');
+          if (field.min) schema = schema.min(field.min);
+          if (field.max) schema = schema.max(field.max);
+          if (field.required) schema = schema.required();
+          acc[field.name] = schema;
         } else if (field.type === 'array') {
           acc[field.name] = Joi.array().items(Joi.string());
           if (field.required) acc[field.name] = acc[field.name].required();
@@ -57,10 +59,13 @@ export const BLOG_TRANSLATION_FIELDS = [
 ];
 
 export const YACHT_TRANSLATION_FIELDS = [
+  { name: 'slug', type: 'string', min: 3, max: 200, required: true },
   { name: 'title', type: 'string', min: 3, max: 200, required: true },
-  { name: 'dayCharter', type: 'string', min: 10, required: false },
-  { name: 'overnightCharter', type: 'string', min: 10, required: false },
-  { name: 'aboutThisBoat', type: 'string', min: 10, required: false },
-  { name: 'specifications', type: 'string', min: 10, required: false },
-  { name: 'boatLayout', type: 'string', min: 10, required: false },
+  // Optional rich-text fields; allow empty string
+  { name: 'dayCharter', type: 'string', required: false },
+  { name: 'overnightCharter', type: 'string', required: false },
+  { name: 'aboutThisBoat', type: 'string', required: false },
+  { name: 'specifications', type: 'string', required: false },
+  { name: 'boatLayout', type: 'string', required: false },
+  { name: 'tags', type: 'array', required: false },
 ];
