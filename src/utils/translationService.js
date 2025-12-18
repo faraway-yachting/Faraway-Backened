@@ -124,9 +124,8 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
   const languagePromises = targetLanguages
     .filter(lang => lang !== 'en')
     .map(async (lang) => {
+      logger.info(`🔄 Translating to ${SUPPORTED_LANGUAGES[lang]}...`);
       try {
-        logger.info(`🔄 Translating to ${SUPPORTED_LANGUAGES[lang]}...`);
-
         // Translate all fields for this language in parallel
         const translationPromises = Object.keys(fieldConfig).map(async (fieldName) => {
           const config = fieldConfig[fieldName];
@@ -142,7 +141,14 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
 
           // Special handling for slug field - ensure URL-friendly format
           const isSlug = fieldName === 'slug';
-          let translatedValue = await translateText(normalizedInput, lang, config.useGPT4 || false, isSlug);
+          let translatedValue;
+          try {
+            translatedValue = await translateText(normalizedInput, lang, config.useGPT4 || false, isSlug);
+          } catch (err) {
+            logger.error(`❌ Field-level translation failed for ${lang}.${fieldName}:`, err?.message || err);
+            // Fallback to English value for this field
+            translatedValue = normalizedInput;
+          }
           
           // For slugs, ensure we have a valid translated value (not empty, not same as English)
           if (isSlug) {
@@ -153,14 +159,13 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
             if (!normalizedTranslated || normalizedTranslated === normalizedEnglish) {
               logger.warn(`⚠️ Slug translation for ${lang} returned empty or unchanged: "${translatedValue}". Retrying with explicit translation request...`);
               
-              // Retry with a more explicit prompt that emphasizes translation
               try {
-                const retryPrompt = `Translate this English URL slug to ${SUPPORTED_LANGUAGES[lang]}: "${englishValue}". You MUST translate it to ${SUPPORTED_LANGUAGES[lang]}, do NOT return English. Return ONLY the translated slug in ${SUPPORTED_LANGUAGES[lang]} language, URL-friendly format.`;
+                const retryPrompt = `Translate this English URL slug to ${SUPPORTED_LANGUAGES[lang]}: "${normalizedInput}". You MUST translate it to ${SUPPORTED_LANGUAGES[lang]}, do NOT return English. Return ONLY the translated slug in ${SUPPORTED_LANGUAGES[lang]} language, URL-friendly format.`;
                 const retryResponse = await openai.chat.completions.create({
                   model: config.useGPT4 ? 'gpt-4' : 'gpt-4o-mini',
                   messages: [
                     { role: 'system', content: retryPrompt },
-                    { role: 'user', content: englishValue },
+                    { role: 'user', content: normalizedInput },
                   ],
                   temperature: 0.3,
                   max_tokens: 200,
@@ -173,17 +178,18 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
                   logger.info(`✅ Retry successful for ${lang} slug: "${retryNormalized}"`);
                   translatedValue = retryNormalized;
                 } else {
-                  logger.error(`❌ Retry failed for ${lang} slug. Still got: "${retryTranslated}"`);
-                  // Don't use English - throw error to prevent saving incomplete translation
-                  throw new Error(`Failed to translate slug to ${lang}. Translation returned empty or English.`);
+                  logger.warn(`⚠️ Retry for ${lang} slug still unchanged/empty. Falling back to English slug.`);
+                  translatedValue = normalizedEnglish;
                 }
               } catch (retryError) {
-                logger.error(`❌ Retry translation failed for ${lang}:`, retryError);
-                throw new Error(`Failed to translate slug to ${lang}: ${retryError.message}`);
+                logger.warn(`⚠️ Retry translation failed for ${lang} slug. Falling back to English slug.`, retryError?.message || retryError);
+                translatedValue = normalizedEnglish;
               }
+            } else {
+              translatedValue = normalizedTranslated;
             }
             
-            return { fieldName, translatedValue: normalizeSlug(translatedValue) };
+            return { fieldName, translatedValue: translatedValue };
           }
           
           // Convert back to array for array fields
@@ -205,9 +211,9 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
         logger.info(`✅ Translation to ${SUPPORTED_LANGUAGES[lang]} completed`);
         return { lang, translatedObject };
       } catch (error) {
-        logger.error(`❌ Failed to translate to ${lang}:`, error?.message || error);
-        // Fail fast: propagate error so no partial English-only blog is created
-        throw error;
+        logger.error(`⚠️ Translation failed for ${lang}, using English fallback`, error?.message || error);
+        // Fallback: use English content for this locale instead of failing
+        return { lang, translatedObject: { ...englishContent } };
       }
     });
 
