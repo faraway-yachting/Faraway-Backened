@@ -256,6 +256,7 @@ export const getAllYachts = async (req, res, next) => {
     }
 
     // Lightweight projection for list responses to reduce payload size on slow networks
+    // Include translations for multilingual support (yacht titles need to be translated)
     const listProjection = {
       boatType: 1,
       price: 1,
@@ -280,6 +281,7 @@ export const getAllYachts = async (req, res, next) => {
       updatedAt: 1,
       createdAt: 1,
       tags: 1,
+      translations: 1, // Include translations for multilingual yacht titles
     };
 
     // Use Promise.all for parallel execution
