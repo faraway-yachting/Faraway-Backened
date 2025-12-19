@@ -78,6 +78,11 @@ const yachtSchema = new mongoose.Schema(
       enum: ['draft', 'published'],
       default: 'draft',
     },
+    displayOrder: {
+      type: Number,
+      default: 9999, // Higher number = lower priority (appears later)
+      // Lower numbers appear first (1 = first, 2 = second, etc.)
+    },
     createdAt: { type: Date, default: Date.now },
   },
   {
@@ -94,5 +99,6 @@ yachtSchema.index({ type: 1 }); // For type-based queries
 yachtSchema.index({ boatType: 1 }); // For boat type filtering
 yachtSchema.index({ price: 1 }); // For price-based queries
 yachtSchema.index({ tags: 1 }); // For tag-based filtering
+yachtSchema.index({ displayOrder: 1 }); // For display order sorting
 
 export default mongoose.model('Yacht', yachtSchema);

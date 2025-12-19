@@ -113,6 +113,16 @@ const addyachtSchema = Joi.object({
   code: Joi.string().allow('').optional(),
   tags: Joi.array().items(Joi.string()).optional(),
   slug: Joi.string().allow('').optional(),
+      displayOrder: Joi.number()
+        .integer()
+        .min(1)
+        .optional()
+        .default(9999)
+    .messages({
+      'number.base': 'Display Order must be a number',
+      'number.integer': 'Display Order must be an integer',
+      'number.min': 'Display Order must be at least 1',
+    }),
   translations: yachtTranslationsSchema.required(),
 });
 

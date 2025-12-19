@@ -282,21 +282,33 @@ export const getAllYachts = async (req, res, next) => {
       createdAt: 1,
       tags: 1,
       translations: 1, // Include translations for multilingual yacht titles
+      displayOrder: 1, // Include displayOrder for custom sorting
     };
 
     // Use Promise.all for parallel execution
+    // Sort order: displayOrder (ascending: 1, 2, 3...), then updatedAt (descending), then createdAt (descending)
+    // Lower displayOrder numbers appear first (1 = first, 2 = second, etc.)
+    // Handle null/undefined displayOrder by treating them as 9999 (appear last)
     const [yachts, total, recentlyUpdated] = await Promise.all([
       Yacht.find(filter)
-        .sort({ updatedAt: -1, createdAt: -1 })
+        .sort({ 
+          displayOrder: 1, // Ascending: 1, 2, 3... (null/undefined treated as 0, but default is 9999)
+          updatedAt: -1, 
+          createdAt: -1 
+        })
         .select(listProjection)
         .skip(skip)
         .limit(parsedLimit)
         .lean()
         .exec(), // Use exec() for better performance
       Yacht.countDocuments(filter).exec(),
-      // Recently updated (last 5)
+      // Recently updated (last 5) - still sorted by displayOrder first
       Yacht.find(filter)
-        .sort({ updatedAt: -1, createdAt: -1 })
+        .sort({ 
+          displayOrder: 1, // Ascending: 1, 2, 3... (order 1 shows first)
+          updatedAt: -1, 
+          createdAt: -1 
+        })
         .select(listProjection)
         .limit(5)
         .lean()
