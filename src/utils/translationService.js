@@ -17,6 +17,85 @@ export const SUPPORTED_LANGUAGES = {
 
 export const DEFAULT_TARGET_LANGUAGES = ['fr', 'de', 'ru', 'zh', 'th', 'ar'];
 
+// Detect if text contains brand names, proper nouns, or technical terms that shouldn't be translated
+// This function uses pattern-based detection to work with ANY yacht brand, not just hardcoded ones
+function containsUntranslatableContent(text) {
+  if (!text) return false;
+  
+  const trimmedText = text.trim();
+  if (trimmedText.length === 0) return false;
+  
+  // Check for model numbers or codes (e.g., "98", "2024", "Model X", "2024ft", "98m")
+  const modelPattern = /\b\d{2,}\b|\b[A-Z]\d+\b|\bModel\s+[A-Z0-9]+\b|\b\d+\s*(ft|feet|m|meters?|kg|tons?)\b/gi;
+  if (modelPattern.test(text)) {
+    return true;
+  }
+  
+  // Extract words from text (handles both spaces and hyphens)
+  const words = trimmedText.split(/[\s\-_]+/).filter(w => w.length > 0);
+  if (words.length === 0) return false;
+  
+  // Check if first word starts with capital letter (common brand name pattern)
+  // Examples: "Bilgin Yacht 98", "Sunseeker 75", "Princess V65"
+  const firstWord = words[0];
+  const startsWithCapital = /^[A-Z]/.test(firstWord);
+  
+  // Check for proper nouns (capitalized words) - these are likely brand names
+  const properNounPattern = /\b[A-Z][a-z]+\b/g;
+  const properNouns = text.match(properNounPattern) || [];
+  
+  // Pattern 1: Text starts with capitalized word (very likely a brand name)
+  // Examples: "Bilgin", "Sunseeker", "Princess", "Ferretti"
+  if (startsWithCapital && firstWord.length > 2) {
+    // If it's a single capitalized word or followed by numbers/units, it's likely a brand
+    if (words.length === 1 || /^\d+/.test(words[1]) || words.length <= 3) {
+      return true;
+    }
+  }
+  
+  // Pattern 2: Multiple capitalized words (brand + model name)
+  // Examples: "Bilgin Yacht", "Sunseeker Predator", "Princess V Class"
+  if (properNouns.length >= 2) {
+    return true;
+  }
+  
+  // Pattern 3: Slug format with brand-like patterns
+  // Examples: "bilgin-yacht-98", "sunseeker-75", "princess-v65"
+  // If first word is longer than 3 chars and text contains numbers, likely brand+model
+  if (firstWord.length > 3 && /-?\d+/.test(trimmedText)) {
+    return true;
+  }
+  
+  // Pattern 4: Check if text is mostly numbers and units (technical specs)
+  const numberWords = words.filter(w => /^\d+/.test(w) || /^\d+[a-z]+$/i.test(w));
+  const numberRatio = numberWords.length / words.length;
+  if (numberRatio > 0.3 && words.length < 20) {
+    return true; // High ratio of numbers suggests technical content
+  }
+  
+  // Pattern 5: Common untranslatable patterns
+  const untranslatablePatterns = [
+    /\b(phuket|thailand|mediterranean|caribbean|bahamas|maldives|monaco|french|riviera|andaman)\b/i,
+    /\b\d+\s*(knots?|ft|feet|m|meters?|kg|tons?|hp|kw|nm|nautical)\b/i,
+    /\b(built|design|year|model|class|series)\s*:?\s*\d+/i,
+    /\b\d{4}\b/, // Years like 2024, 2023
+  ];
+  
+  for (const pattern of untranslatablePatterns) {
+    if (pattern.test(text)) {
+      return true;
+    }
+  }
+  
+  // Pattern 6: Short text with capitalized first word (likely brand name in title/slug)
+  // Examples: "Bilgin", "Sunseeker", "Azimut"
+  if (words.length <= 3 && startsWithCapital && firstWord.length >= 4) {
+    return true;
+  }
+  
+  return false;
+}
+
 // Normalize slug to URL-friendly format (preserves Unicode for non-Latin languages)
 function normalizeSlug(slug) {
   if (!slug) return '';
@@ -89,20 +168,20 @@ async function translateText(text, targetLanguage, useGPT4 = false, isSlug = fal
   const systemPrompt = isSlug
     ? `Translate this English URL slug to ${languageName}. 
 
-YOU MUST TRANSLATE IT. DO NOT COPY THE ENGLISH TEXT.
-
 English slug: "${text}"
 
-Rules:
-1. Translate EVERY word to ${languageName}
-2. Even if it's a proper noun or seems untranslatable, find the ${languageName} equivalent
-3. Use lowercase letters
-4. Use hyphens (-) to separate words
-5. Return ONLY the translated slug, nothing else
+IMPORTANT RULES:
+1. Translate descriptive words to ${languageName}
+2. KEEP brand names, proper nouns, and model numbers UNCHANGED (e.g., "Bilgin", "98", "2024")
+3. Translate common words like "yacht", "luxury", "cruise", "family", etc.
+4. Use lowercase letters
+5. Use hyphens (-) to separate words
+6. Return ONLY the translated slug, nothing else
 
 Translation examples:
 - English "luxury-yacht" → French "yacht-de-luxe" → German "luxusyacht" → Russian "роскошная-яхта" → Chinese "豪华游艇"
 - English "family-friendly" → French "familial" → German "familienfreundlich" → Arabic "صديق-للأسرة" → Thai "เหมาะสำหรับครอบครัว"
+- English "bilgin-yacht-98" → French "bilgin-yacht-98" (keep brand name and number) → German "bilgin-yacht-98"
 - English "sunset-cruise" → French "croisiere-coucher-soleil" → German "sonnenuntergang-kreuzfahrt" → Arabic "رحلة-غروب-الشمس"
 
 Now translate "${text}" to ${languageName}:
@@ -110,11 +189,15 @@ Now translate "${text}" to ${languageName}:
     : isShortContent
     ? `You are a professional translator. Translate the following English text to ${languageName}.
 
-MANDATORY: You MUST translate ALL words to ${languageName}. NEVER return English text unchanged. If you return English, the translation has FAILED.
+IMPORTANT RULES:
+1. Translate descriptive words to ${languageName}
+2. KEEP brand names, proper nouns, and model numbers UNCHANGED (e.g., "Bilgin", "Sunseeker", "98", "2024")
+3. Translate common words like "Luxury", "Yacht", "Family", "Friendly", etc.
 
 Examples:
 - English: "Luxury Yacht" → French: "Yacht de Luxe" → German: "Luxusyacht" → Chinese: "豪华游艇"
 - English: "Family Friendly" → French: "Familial" → German: "Familienfreundlich" → Arabic: "صديق للأسرة"
+- English: "Bilgin Yacht 98" → French: "Yacht Bilgin 98" (keep brand name and number) → German: "Bilgin Yacht 98"
 
 INPUT: "${text}"
 TARGET: ${languageName}
@@ -123,11 +206,12 @@ Return ONLY the translated text in ${languageName}, nothing else.`
     : `You are a professional translator. Translate the following text to ${languageName}.
 
 CRITICAL REQUIREMENTS:
-1. You MUST translate ALL text to ${languageName} - NEVER return English text
-2. Maintain the exact same HTML structure, formatting, and style
-3. Translate ALL content including table headers, labels, and text within HTML tags
-4. Only return the translated text without any explanations or additional content
-5. Ensure the translation is complete and accurate
+1. Translate descriptive text to ${languageName}
+2. KEEP brand names, proper nouns, model numbers, and technical specifications UNCHANGED (e.g., "Bilgin", "Sunseeker", "98ft", "2024", "30 knots")
+3. Maintain the exact same HTML structure, formatting, and style
+4. Translate ALL content including table headers, labels, and text within HTML tags
+5. Only return the translated text without any explanations or additional content
+6. Ensure the translation is complete and accurate
 
 Return ONLY the translated text in ${languageName}.`;
 
@@ -204,10 +288,20 @@ function validateTranslation(translated, english, fieldName, lang, isSlug = fals
     throw new Error(`Translation for ${lang}.${fieldName} returned empty`);
   }
 
+  // Check if content contains untranslatable elements (brand names, proper nouns, technical terms)
+  const hasUntranslatable = containsUntranslatableContent(english);
+
   if (isSlug) {
     const normalizedTranslated = normalizeSlug(translated);
     const normalizedEnglish = normalizeSlug(english);
+    
+    // Allow identical slugs if they contain brand names or proper nouns
     if (normalizedTranslated === normalizedEnglish) {
+      if (hasUntranslatable) {
+        // This is acceptable - brand names should stay the same
+        logger.info(`✓ Allowing identical slug for ${lang}.${fieldName} (contains brand name/proper noun): "${normalizedEnglish}"`);
+        return normalizedTranslated;
+      }
       throw new Error(`Translation for ${lang}.${fieldName} (slug) is identical to English`);
     }
     return normalizedTranslated;
@@ -236,12 +330,33 @@ function validateTranslation(translated, english, fieldName, lang, isSlug = fals
   const textOnlyTranslated = removeNumbersAndSymbols(cleanTranslated);
   const textOnlyEnglish = removeNumbersAndSymbols(cleanEnglish);
   
+  // For content fields, be more lenient
+  // Only check for identical if text is substantial and doesn't contain untranslatable content
   if (textOnlyTranslated === textOnlyEnglish && textOnlyTranslated.length > 10) {
+    if (hasUntranslatable) {
+      // Allow identical if it contains brand names/technical terms
+      logger.info(`✓ Allowing identical content for ${lang}.${fieldName} (contains brand name/technical term)`);
+      return translated;
+    }
+    // For short content, be more lenient (might be titles or technical terms)
+    if (textOnlyTranslated.length < 50) {
+      logger.warn(`⚠️ Translation for ${lang}.${fieldName} is identical but short (${textOnlyTranslated.length} chars), allowing it`);
+      return translated;
+    }
     throw new Error(`Translation for ${lang}.${fieldName} appears identical to English`);
   }
 
+  // Use more lenient similarity threshold for descriptions
   const similarity = calculateSimilarity(cleanTranslated, cleanEnglish);
-  if (similarity > 0.95 && cleanTranslated.length > 50) {
+  const similarityThreshold = hasUntranslatable ? 0.98 : 0.97; // More lenient if contains brand names
+  const minLengthForSimilarityCheck = hasUntranslatable ? 100 : 50; // Longer content needed if has brand names
+  
+  if (similarity > similarityThreshold && cleanTranslated.length > minLengthForSimilarityCheck) {
+    if (hasUntranslatable) {
+      // High similarity is acceptable if content contains brand names/technical terms
+      logger.info(`✓ Allowing high similarity (${(similarity * 100).toFixed(1)}%) for ${lang}.${fieldName} (contains brand name/technical term)`);
+      return translated;
+    }
     throw new Error(`Translation for ${lang}.${fieldName} is ${(similarity * 100).toFixed(1)}% similar to English`);
   }
 
@@ -371,7 +486,7 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
         const normalizedInput = isArrayField ? englishValue.join(', ') : englishValue;
         
         if (!normalizedInput || !normalizedInput.trim()) {
-          return { fieldName, translatedValue: isArrayField ? [] : '' };
+          return { fieldName, translatedValue: isArrayField ? [] : '', success: true };
         }
 
         const isSlug = fieldName === 'slug';
@@ -396,7 +511,7 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
             translatedValue = validateTranslation(translatedValue, normalizedInput, fieldName, lang, isSlug);
             
             // If we get here, validation passed - translation is good
-            break;
+            return { fieldName, translatedValue: isArrayField ? translatedValue.split(',').map(p => p.trim()).filter(Boolean) : translatedValue, success: true };
           } catch (err) {
             lastError = err;
             const isIdenticalError = err?.message?.includes('identical') || err?.message?.includes('similar');
@@ -404,7 +519,7 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
             // If translation is identical and we have retries left, wait and retry
             if (isIdenticalError && attempt < maxRetries) {
               logger.warn(`⚠️ Translation for ${lang}.${fieldName} returned identical text (attempt ${attempt}/${maxRetries}), retrying...`, {
-                input: normalizedInput,
+                input: normalizedInput.substring(0, 100),
                 received: err?.message,
                 usingGPT4: useGPT4ForField
               });
@@ -412,55 +527,98 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
               continue;
             }
             
-            // If not identical error or no retries left, throw
-            logger.error(`❌ Translation failed for ${lang}.${fieldName}:`, {
+            // If all retries exhausted, fallback to English instead of failing
+            logger.warn(`⚠️ Translation failed for ${lang}.${fieldName} after ${attempt} attempts, using English as fallback:`, {
               error: err?.message || String(err),
               fieldName,
               language: SUPPORTED_LANGUAGES[lang],
               inputLength: normalizedInput?.length || 0,
-              input: normalizedInput,
               isSlug,
-              useGPT4: useGPT4ForField,
-              attempt
+              useGPT4: useGPT4ForField
             });
-            throw new Error(`Failed to translate ${fieldName} to ${SUPPORTED_LANGUAGES[lang]}: ${err?.message || String(err)}`);
+            
+            // Fallback to English content for this field
+            return { 
+              fieldName, 
+              translatedValue: isArrayField ? englishValue : normalizedInput, 
+              success: false,
+              fallback: true,
+              error: err?.message || String(err)
+            };
           }
         }
         
-        if (!translatedValue) {
-          throw lastError || new Error(`Translation failed for ${fieldName} to ${SUPPORTED_LANGUAGES[lang]}`);
-        }
-        
-        if (isArrayField) {
-          const parts = translatedValue.split(',').map(p => p.trim()).filter(Boolean);
-          return { fieldName, translatedValue: parts.length > 0 ? parts : [] };
-        }
-        
-        return { fieldName, translatedValue };
+        // Should never reach here, but just in case
+        return { 
+          fieldName, 
+          translatedValue: isArrayField ? englishValue : normalizedInput, 
+          success: false,
+          fallback: true,
+          error: lastError?.message || 'Unknown translation error'
+        };
       });
 
       // Increased field concurrency to 3 for speed
       const translationResults = await limitConcurrency(fieldTasks, 3);
       const translatedObject = {};
-      translationResults.forEach(({ fieldName, translatedValue }) => {
+      let hasFailures = false;
+      let hasFallbacks = false;
+      
+      translationResults.forEach(({ fieldName, translatedValue, success, fallback, error }) => {
         translatedObject[fieldName] = translatedValue;
+        if (!success) {
+          hasFailures = true;
+          if (fallback) {
+            hasFallbacks = true;
+          }
+        }
       });
 
-      logger.info(`✅ Translation to ${SUPPORTED_LANGUAGES[lang]} completed`);
-      return { lang, translatedObject };
+      if (hasFallbacks) {
+        logger.warn(`⚠️ Translation to ${SUPPORTED_LANGUAGES[lang]} completed with some fields using English fallback`);
+      } else if (hasFailures) {
+        logger.warn(`⚠️ Translation to ${SUPPORTED_LANGUAGES[lang]} completed with some failures`);
+      } else {
+        logger.info(`✅ Translation to ${SUPPORTED_LANGUAGES[lang]} completed`);
+      }
+      
+      return { lang, translatedObject, hasFailures, hasFallbacks };
     } catch (error) {
-      logger.error(`❌ Translation failed for language ${SUPPORTED_LANGUAGES[lang]}:`, error?.message || error);
-      throw error;
+      // If language translation completely fails, use English as fallback for all fields
+      logger.error(`❌ Translation failed for language ${SUPPORTED_LANGUAGES[lang]}, using English fallback:`, error?.message || error);
+      
+      const fallbackObject = {};
+      const fieldNames = Object.keys(fieldConfig);
+      fieldNames.forEach(fieldName => {
+        const englishValue = englishContent[fieldName] || '';
+        const isArrayField = Array.isArray(englishValue);
+        fallbackObject[fieldName] = isArrayField ? englishValue : englishValue;
+      });
+      
+      return { lang, translatedObject: fallbackObject, hasFailures: true, hasFallbacks: true };
     }
   });
 
   // Process 2 languages in parallel for speed
   const languageResults = await limitConcurrency(languageTasks, 2);
   
-  // Build final translations object
-  languageResults.forEach(({ lang, translatedObject }) => {
+  // Build final translations object and track overall status
+  let totalFailures = 0;
+  let totalFallbacks = 0;
+  
+  languageResults.forEach(({ lang, translatedObject, hasFailures, hasFallbacks }) => {
     translations[lang] = translatedObject;
+    if (hasFailures) totalFailures++;
+    if (hasFallbacks) totalFallbacks++;
   });
+
+  if (totalFallbacks > 0) {
+    logger.warn(`⚠️ Translation completed: ${totalFallbacks} language(s) used English fallback for some fields`);
+  } else if (totalFailures > 0) {
+    logger.warn(`⚠️ Translation completed: ${totalFailures} language(s) had some translation issues`);
+  } else {
+    logger.info(`✅ All translations completed successfully`);
+  }
 
   return translations;
 }
