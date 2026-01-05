@@ -399,32 +399,118 @@ export const cacheBlogBySlug = async (req, res, next) => {
 };
 
 // Clear cache when yacht data changes
-export const clearYachtCache = async () => {
+export const clearYachtCache = async (force = false) => {
   try {
-    const keys = await redis.keys('yachts:*');
-    const individualKeys = await redis.keys('yacht:*');
-    const slugKeys = await redis.keys('yachtSlug:*');
-    if (keys.length > 0 || individualKeys.length > 0 || slugKeys.length > 0) {
-      await redis.del(...keys, ...individualKeys, ...slugKeys);
-      console.log('🗑️ Cleared all yacht cache');
+    // Get all yacht-related cache keys with pattern matching
+    const patterns = ['yachts:*', 'yacht:*', 'yachtSlug:*'];
+    const allKeys = [];
+    
+    for (const pattern of patterns) {
+      try {
+        const keys = await redis.keys(pattern);
+        allKeys.push(...keys);
+      } catch (patternError) {
+        console.warn(`⚠️ Error getting keys for pattern ${pattern}:`, patternError.message);
+      }
+    }
+    
+    // Remove duplicates
+    const uniqueKeys = [...new Set(allKeys)];
+    
+    if (uniqueKeys.length > 0) {
+      // Delete in batches to avoid memory issues
+      const batchSize = 100;
+      let deletedCount = 0;
+      
+      for (let i = 0; i < uniqueKeys.length; i += batchSize) {
+        const batch = uniqueKeys.slice(i, i + batchSize);
+        try {
+          const result = await redis.del(...batch);
+          deletedCount += result || 0;
+        } catch (batchError) {
+          console.warn(`⚠️ Error deleting batch ${i}-${i + batch.length}:`, batchError.message);
+        }
+      }
+      
+      console.log(`🗑️ Cleared ${deletedCount}/${uniqueKeys.length} yacht cache keys`);
+      
+      // If force mode, also try to flush all yacht-related keys one more time
+      if (force && deletedCount < uniqueKeys.length) {
+        console.log('🔄 Force mode: Attempting to clear remaining keys...');
+        const remainingKeys = uniqueKeys.filter((_, idx) => {
+          const batchIdx = Math.floor(idx / batchSize);
+          return batchIdx >= Math.floor(deletedCount / batchSize);
+        });
+        if (remainingKeys.length > 0) {
+          await redis.del(...remainingKeys);
+          console.log(`🗑️ Force cleared additional ${remainingKeys.length} keys`);
+        }
+      }
+    } else {
+      console.log('🗑️ No yacht cache keys found to clear');
     }
   } catch (error) {
-    console.error('Error clearing cache:', error);
+    console.error('❌ Error clearing yacht cache:', error);
+    // Try to continue even if cache clear fails
+    throw error; // Re-throw so caller knows it failed
   }
 };
 
 // Clear cache when blog data changes
-export const clearBlogCache = async () => {
+export const clearBlogCache = async (force = false) => {
   try {
-    const keys = await redis.keys('blogs:*');
-    const individualKeys = await redis.keys('blog:*');
-    const slugKeys = await redis.keys('blogSlug:*');
-    if (keys.length > 0 || individualKeys.length > 0 || slugKeys.length > 0) {
-      await redis.del(...keys, ...individualKeys, ...slugKeys);
-      console.log('🗑️ Cleared all blog cache');
+    // Get all blog-related cache keys with pattern matching
+    const patterns = ['blogs:*', 'blog:*', 'blogSlug:*'];
+    const allKeys = [];
+    
+    for (const pattern of patterns) {
+      try {
+        const keys = await redis.keys(pattern);
+        allKeys.push(...keys);
+      } catch (patternError) {
+        console.warn(`⚠️ Error getting keys for pattern ${pattern}:`, patternError.message);
+      }
+    }
+    
+    // Remove duplicates
+    const uniqueKeys = [...new Set(allKeys)];
+    
+    if (uniqueKeys.length > 0) {
+      // Delete in batches to avoid memory issues
+      const batchSize = 100;
+      let deletedCount = 0;
+      
+      for (let i = 0; i < uniqueKeys.length; i += batchSize) {
+        const batch = uniqueKeys.slice(i, i + batchSize);
+        try {
+          const result = await redis.del(...batch);
+          deletedCount += result || 0;
+        } catch (batchError) {
+          console.warn(`⚠️ Error deleting batch ${i}-${i + batch.length}:`, batchError.message);
+        }
+      }
+      
+      console.log(`🗑️ Cleared ${deletedCount}/${uniqueKeys.length} blog cache keys`);
+      
+      // If force mode, also try to flush all blog-related keys one more time
+      if (force && deletedCount < uniqueKeys.length) {
+        console.log('🔄 Force mode: Attempting to clear remaining keys...');
+        const remainingKeys = uniqueKeys.filter((_, idx) => {
+          const batchIdx = Math.floor(idx / batchSize);
+          return batchIdx >= Math.floor(deletedCount / batchSize);
+        });
+        if (remainingKeys.length > 0) {
+          await redis.del(...remainingKeys);
+          console.log(`🗑️ Force cleared additional ${remainingKeys.length} keys`);
+        }
+      }
+    } else {
+      console.log('🗑️ No blog cache keys found to clear');
     }
   } catch (error) {
-    console.error('Error clearing cache:', error);
+    console.error('❌ Error clearing blog cache:', error);
+    // Try to continue even if cache clear fails
+    throw error; // Re-throw so caller knows it failed
   }
 };
 
