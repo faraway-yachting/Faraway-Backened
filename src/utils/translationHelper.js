@@ -10,12 +10,20 @@ export async function processTranslations(data, fieldConfig, existingTranslation
   let hasEnglishContent = false;
 
   Object.keys(fieldConfig).forEach(fieldName => {
-    if (data[fieldName]) {
-      englishContent[fieldName] = data[fieldName];
+    // Check if field exists in data (including empty strings, but not undefined/null)
+    if (data.hasOwnProperty(fieldName)) {
+      // Include the value even if it's an empty string
+      englishContent[fieldName] = data[fieldName] !== undefined && data[fieldName] !== null 
+        ? data[fieldName] 
+        : (existingTranslations?.en?.[fieldName] || '');
       hasEnglishContent = true;
-    } else if (existingTranslations?.en?.[fieldName]) {
+    } else if (existingTranslations?.en?.[fieldName] !== undefined) {
+      // Use existing value if not provided in data
       englishContent[fieldName] = existingTranslations.en[fieldName];
       hasEnglishContent = true;
+    } else {
+      // Default to empty string or empty array for tags
+      englishContent[fieldName] = fieldName === 'tags' ? [] : '';
     }
   });
 
@@ -30,11 +38,11 @@ export async function processTranslations(data, fieldConfig, existingTranslation
   if (existingTranslations) {
     // Update English with new content, retranslate all other languages
     // This ensures all translations stay in sync with the updated English content
-    return {
+    // IMPORTANT: Overwrite English completely with englishContent to ensure all fields are updated
+    const updatedTranslations = {
       ...existingTranslations, // Preserve structure
       en: {
-        ...existingTranslations.en,
-        ...englishContent, // Update English with new content
+        ...englishContent, // Completely replace English with new content (not merge)
       },
       // Use new translations (retranslated based on updated English)
       // If translation fails for a language, fallback to existing translation
@@ -45,6 +53,9 @@ export async function processTranslations(data, fieldConfig, existingTranslation
       th: translations.th || existingTranslations.th,
       ar: translations.ar || existingTranslations.ar,
     };
+    
+    logger.info(`✅ English updated with ${Object.keys(englishContent).length} fields`);
+    return updatedTranslations;
   }
 
   return translations;

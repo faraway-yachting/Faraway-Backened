@@ -163,16 +163,16 @@ export const addYacht = async (req, res, next) => {
       return next(slugError);
     }
 
-    // Build English source for translation
+    // Build English source for translation - ensure empty strings are preserved
     const en = yachtData.translations.en;
     const englishSource = {
-      slug: en.slug,
-      title: en.title,
-      dayCharter: en.dayCharter,
-      overnightCharter: en.overnightCharter,
-      aboutThisBoat: en.aboutThisBoat,
-      specifications: en.specifications,
-      boatLayout: en.boatLayout,
+      slug: en.slug || '',
+      title: en.title || '',
+      dayCharter: en.dayCharter || '',
+      overnightCharter: en.overnightCharter || '',
+      aboutThisBoat: en.aboutThisBoat || '',
+      specifications: en.specifications || '',
+      boatLayout: en.boatLayout || '',
       tags: en.tags || yachtData.tags || [],
     };
 
@@ -206,18 +206,25 @@ export const addYacht = async (req, res, next) => {
       );
     }
 
+    // Ensure empty strings are preserved and status defaults to draft
     const yachtToCreate = {
       ...yachtData,
       slug: englishSource.slug,
       translations,
-      // keep legacy top-level fields in sync with English so existing consumers continue to work
-      title: englishSource.title,
-      dayCharter: englishSource.dayCharter,
-      overnightCharter: englishSource.overnightCharter,
-      aboutThisBoat: englishSource.aboutThisBoat,
-      specifications: englishSource.specifications,
-      boatLayout: englishSource.boatLayout,
-      tags: englishSource.tags || [],
+      // Ensure optional fields are empty strings if not provided
+      videoLink: yachtData.videoLink || '',
+      badge: yachtData.badge || '',
+      design: yachtData.design || '',
+      built: yachtData.built || '',
+      cruisingSpeed: yachtData.cruisingSpeed || '',
+      lengthOverall: yachtData.lengthOverall || '',
+      fuelCapacity: yachtData.fuelCapacity || '',
+      waterCapacity: yachtData.waterCapacity || '',
+      code: yachtData.code || '',
+      // Ensure status defaults to draft if not provided
+      status: yachtData.status || 'draft',
+      // Ensure displayOrder defaults to 9999 if not provided
+      displayOrder: yachtData.displayOrder ?? 9999,
     };
 
     const newYacht = await Yacht.create(yachtToCreate);
@@ -575,36 +582,67 @@ export const editYacht = async (req, res, next) => {
     const currentTranslations = existingYacht.translations || {};
     let updateData = { ...yachtData };
 
-    // If no translations provided but English fields were sent, auto-translate based on English
-    const hasEnglishFields =
-      yachtData.title ||
-      yachtData.dayCharter ||
-      yachtData.overnightCharter ||
-      yachtData.aboutThisBoat ||
-      yachtData.specifications ||
-      yachtData.boatLayout ||
-      (Array.isArray(yachtData.tags) && yachtData.tags.length > 0) ||
-      incomingSlug;
+    // Extract English content from translations.en or from top-level fields
+    const incomingEnglish = yachtData.translations?.en || {};
+    const currentEnglish = currentTranslations?.en || {};
+    
+    // Helper to get value prioritizing incoming, but preserving empty strings
+    const getValue = (fieldName, incomingVal, topLevelVal, existingVal, defaultValue = '') => {
+      // If field exists in incomingEnglish (even if empty string), use it
+      if (incomingEnglish.hasOwnProperty(fieldName)) {
+        return incomingVal !== undefined && incomingVal !== null ? incomingVal : defaultValue;
+      }
+      // Otherwise check top-level field
+      if (yachtData.hasOwnProperty(fieldName) && yachtData[fieldName] !== undefined && yachtData[fieldName] !== null) {
+        return yachtData[fieldName];
+      }
+      // Fallback to existing
+      return existingVal !== undefined && existingVal !== null ? existingVal : defaultValue;
+    };
+    
+    // Build English source from incoming data (prioritize translations.en, preserve empty strings)
+    const englishSource = {
+      slug: incomingEnglish.hasOwnProperty('slug') 
+        ? (incomingEnglish.slug || '')
+        : (incomingSlug || currentEnglish.slug || existingYacht.slug || ''),
+      title: getValue('title', incomingEnglish.title, yachtData.title, currentEnglish.title),
+      dayCharter: getValue('dayCharter', incomingEnglish.dayCharter, yachtData.dayCharter, currentEnglish.dayCharter),
+      overnightCharter: getValue('overnightCharter', incomingEnglish.overnightCharter, yachtData.overnightCharter, currentEnglish.overnightCharter),
+      aboutThisBoat: getValue('aboutThisBoat', incomingEnglish.aboutThisBoat, yachtData.aboutThisBoat, currentEnglish.aboutThisBoat),
+      specifications: getValue('specifications', incomingEnglish.specifications, yachtData.specifications, currentEnglish.specifications),
+      boatLayout: getValue('boatLayout', incomingEnglish.boatLayout, yachtData.boatLayout, currentEnglish.boatLayout),
+      tags: incomingEnglish.hasOwnProperty('tags')
+        ? (Array.isArray(incomingEnglish.tags) ? incomingEnglish.tags : [])
+        : (Array.isArray(yachtData.tags) ? yachtData.tags : (Array.isArray(currentEnglish.tags) ? currentEnglish.tags : [])),
+    };
 
-    if (!yachtData.translations && hasEnglishFields) {
-      const englishSource = {
-        slug: incomingSlug || currentTranslations?.en?.slug || existingYacht.slug,
-        title: yachtData.title || currentTranslations?.en?.title,
-        dayCharter: yachtData.dayCharter || currentTranslations?.en?.dayCharter,
-        overnightCharter: yachtData.overnightCharter || currentTranslations?.en?.overnightCharter,
-        aboutThisBoat: yachtData.aboutThisBoat || currentTranslations?.en?.aboutThisBoat,
-        specifications: yachtData.specifications || currentTranslations?.en?.specifications,
-        boatLayout: yachtData.boatLayout || currentTranslations?.en?.boatLayout,
-        tags: yachtData.tags || currentTranslations?.en?.tags || [],
-      };
+    // Check if English content has changed by comparing with current translations
+    // Normalize values for comparison (handle undefined/null/empty string consistently)
+    const normalizeValue = (val) => val ?? '';
+    const normalizeTags = (tags) => JSON.stringify(Array.isArray(tags) ? tags : []);
+    
+    const hasEnglishChanges = 
+      normalizeValue(englishSource.slug) !== normalizeValue(currentEnglish.slug || existingYacht.slug) ||
+      normalizeValue(englishSource.title) !== normalizeValue(currentEnglish.title) ||
+      normalizeValue(englishSource.dayCharter) !== normalizeValue(currentEnglish.dayCharter) ||
+      normalizeValue(englishSource.overnightCharter) !== normalizeValue(currentEnglish.overnightCharter) ||
+      normalizeValue(englishSource.aboutThisBoat) !== normalizeValue(currentEnglish.aboutThisBoat) ||
+      normalizeValue(englishSource.specifications) !== normalizeValue(currentEnglish.specifications) ||
+      normalizeValue(englishSource.boatLayout) !== normalizeValue(currentEnglish.boatLayout) ||
+      normalizeTags(englishSource.tags) !== normalizeTags(currentEnglish.tags);
 
+    // If English content has changed, re-translate all languages
+    if (hasEnglishChanges) {
       try {
+        // Process translations: this will update English and re-translate all other languages
         updateData.translations = await processTranslations(
           englishSource,
           YACHT_FIELD_CONFIG,
           currentTranslations
         );
+        console.log('✅ Translations updated: English content changed, all languages re-translated');
       } catch (translationError) {
+        console.error('❌ Translation error:', translationError);
         return next(
           new ApiError(
             'Failed to translate yacht content while updating. Please try again later.',
@@ -612,34 +650,29 @@ export const editYacht = async (req, res, next) => {
           )
         );
       }
+    } else if (yachtData.translations || incomingEnglish && Object.keys(incomingEnglish).length > 0) {
+      // If translations provided but English hasn't changed, still update English with new values
+      // This ensures English is updated even if comparison didn't detect changes (e.g., same content but different format)
+      updateData.translations = {
+        ...currentTranslations, // Preserve all existing languages
+        en: {
+          ...currentTranslations.en,
+          ...englishSource, // Update English with the complete source (includes all fields)
+        },
+      };
+      console.log('✅ Translations preserved: English updated, other languages kept');
+    } else {
+      // No translations provided and no English changes, keep existing
+      updateData.translations = currentTranslations;
+    }
 
-      // keep legacy top-level fields in sync with English
+    // Ensure slug is set at top level for routing
+    if (englishSource.slug) {
       updateData.slug = englishSource.slug;
-      updateData.title = englishSource.title;
-      updateData.dayCharter = englishSource.dayCharter;
-      updateData.overnightCharter = englishSource.overnightCharter;
-      updateData.aboutThisBoat = englishSource.aboutThisBoat;
-      updateData.specifications = englishSource.specifications;
-      updateData.boatLayout = englishSource.boatLayout;
-      updateData.tags = englishSource.tags;
-    }
-
-    // Ensure slug remains set from existing translations if none provided
-    if (!incomingSlug && currentTranslations?.en?.slug && !updateData.slug) {
+    } else if (currentTranslations?.en?.slug) {
       updateData.slug = currentTranslations.en.slug;
-    }
-
-    // Keep legacy top-level fields in sync when translations are provided directly
-    if (updateData.translations?.en) {
-      const en = updateData.translations.en;
-      if (en.slug) updateData.slug = en.slug;
-      if (en.title && !updateData.title) updateData.title = en.title;
-      if (en.dayCharter && !updateData.dayCharter) updateData.dayCharter = en.dayCharter;
-      if (en.overnightCharter && !updateData.overnightCharter) updateData.overnightCharter = en.overnightCharter;
-      if (en.aboutThisBoat && !updateData.aboutThisBoat) updateData.aboutThisBoat = en.aboutThisBoat;
-      if (en.specifications && !updateData.specifications) updateData.specifications = en.specifications;
-      if (en.boatLayout && !updateData.boatLayout) updateData.boatLayout = en.boatLayout;
-      if (en.tags && !updateData.tags) updateData.tags = en.tags;
+    } else if (existingYacht.slug) {
+      updateData.slug = existingYacht.slug;
     }
 
     // Update the yacht
