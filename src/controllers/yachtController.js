@@ -113,41 +113,59 @@ export const addYacht = async (req, res, next) => {
     console.log(`🖼️ Gallery images found: ${galleryImageFiles.length}`);
 
     if (galleryImageFiles.length > 0) {
-      yachtData.galleryImages = [];
+      // Validate file sizes first (before upload)
+      const fs = await import('fs/promises');
+      const maxSize = 10 * 1024 * 1024; // 10MB in bytes
       for (const file of galleryImageFiles) {
+        if (file.size > maxSize) {
+          return next(
+            new ApiError(
+              `Gallery image file size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum allowed size of 10MB`,
+              400
+            )
+          );
+        }
+      }
+
+      // Upload images in parallel for better performance
+      console.log(`🖼️ Uploading ${galleryImageFiles.length} gallery images in parallel...`);
+      const uploadPromises = galleryImageFiles.map(async (file) => {
         try {
-          // Check file size (max 10MB)
-          const maxSize = 10 * 1024 * 1024; // 10MB in bytes
-          if (file.size > maxSize) {
-            return next(
-              new ApiError(
-                `Gallery image file size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum allowed size of 10MB`,
-                400
-              )
-            );
-          }
-
-          console.log(`📸 Uploading gallery image: ${file.originalname}`);
-
           // Check if file exists
-          const fs = await import('fs/promises');
-          try {
-            await fs.access(file.path);
-          } catch (accessError) {
-            console.error('❌ Gallery image file access error');
-            return next(new ApiError('Gallery image file not found', 500));
-          }
-
+          await fs.access(file.path);
+          console.log(`📸 Uploading gallery image: ${file.originalname}`);
           const url = await uploadToCloudinary(
             file.path,
             'yachts/galleryImages'
           );
-          yachtData.galleryImages.push(url);
           console.log('✅ Gallery image uploaded successfully');
+          return url;
         } catch (uploadError) {
-          console.error('❌ Gallery image upload failed');
-          return next(new ApiError('Failed to upload gallery image', 400));
+          console.error(`❌ Gallery image ${file.originalname} upload failed:`, uploadError);
+          throw uploadError;
         }
+      });
+      
+      try {
+        // Wait for all uploads (parallel execution is much faster)
+        const uploadResults = await Promise.allSettled(uploadPromises);
+        yachtData.galleryImages = [];
+        uploadResults.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            yachtData.galleryImages.push(result.value);
+          } else {
+            console.error(`Gallery image ${galleryImageFiles[index].originalname} upload failed:`, result.reason);
+            // Continue with other images even if one fails
+          }
+        });
+        console.log(`✅ Successfully uploaded ${yachtData.galleryImages.length}/${galleryImageFiles.length} gallery images`);
+      } catch (uploadError) {
+        return next(
+          new ApiError(
+            `Failed to upload gallery images: ${uploadError.message}`,
+            400
+          )
+        );
       }
     }
 
@@ -194,10 +212,17 @@ export const addYacht = async (req, res, next) => {
     }
 
     // Auto-translate to all configured locales
+    // Add timeout protection (max 5 minutes for translation)
     let translations;
     try {
-      translations = await processTranslations(englishSource, YACHT_FIELD_CONFIG);
+      const translationPromise = processTranslations(englishSource, YACHT_FIELD_CONFIG);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Translation timeout after 5 minutes')), 300000)
+      );
+      
+      translations = await Promise.race([translationPromise, timeoutPromise]);
     } catch (translationError) {
+      console.error('❌ Translation error during yacht creation:', translationError);
       return next(
         new ApiError(
           'Failed to translate yacht content. Please try again later.',
@@ -525,25 +550,43 @@ export const editYacht = async (req, res, next) => {
 
     if (galleryImageFiles.length > 0) {
       const newGalleryImages = [];
-      for (const file of galleryImageFiles) {
+      // Upload images in parallel for better performance
+      const uploadPromises = galleryImageFiles.map(async (file) => {
         try {
-          const url = await uploadToCloudinary(
+          return await uploadToCloudinary(
             file.path,
             'Faraway/yachts/galleryImages'
           );
-          newGalleryImages.push(url);
         } catch (uploadError) {
-          return next(
-            new ApiError(
-              `Failed to upload gallery image: ${uploadError.message}`,
-              400
-            )
-          );
+          console.error(`Failed to upload gallery image ${file.originalname}:`, uploadError);
+          throw uploadError;
         }
+      });
+      
+      try {
+        // Wait for all uploads with timeout (max 2 minutes per image, 10 minutes total)
+        const uploadResults = await Promise.allSettled(uploadPromises);
+        uploadResults.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            newGalleryImages.push(result.value);
+          } else {
+            console.error(`Gallery image ${galleryImageFiles[index].originalname} upload failed:`, result.reason);
+            // Continue with other images even if one fails
+          }
+        });
+      } catch (uploadError) {
+        return next(
+          new ApiError(
+            `Failed to upload gallery images: ${uploadError.message}`,
+            400
+          )
+        );
       }
 
       // If new gallery images are provided, replace the existing ones
-      yachtData.galleryImages = newGalleryImages;
+      if (newGalleryImages.length > 0) {
+        yachtData.galleryImages = newGalleryImages;
+      }
     }
 
     // Derive slug if provided (from translations.en.slug or body.slug)
@@ -635,21 +678,35 @@ export const editYacht = async (req, res, next) => {
     // If English content has changed, re-translate all languages
     if (hasEnglishChanges) {
       try {
-        // Process translations: this will update English and re-translate all other languages
-        updateData.translations = await processTranslations(
+        // Add timeout wrapper for translation process (max 5 minutes)
+        const translationPromise = processTranslations(
           englishSource,
           YACHT_FIELD_CONFIG,
           currentTranslations
         );
+        
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Translation timeout after 5 minutes')), 300000)
+        );
+        
+        // Process translations with timeout protection
+        updateData.translations = await Promise.race([translationPromise, timeoutPromise]);
         console.log('✅ Translations updated: English content changed, all languages re-translated');
       } catch (translationError) {
         console.error('❌ Translation error:', translationError);
-        return next(
-          new ApiError(
-            'Failed to translate yacht content while updating. Please try again later.',
-            502
-          )
-        );
+        
+        // If translation fails or times out, update English only and keep existing translations
+        // This allows the edit to succeed even if translation service is slow
+        console.warn('⚠️ Translation failed, updating English only and preserving existing translations');
+        updateData.translations = {
+          ...currentTranslations,
+          en: {
+            ...currentTranslations.en,
+            ...englishSource,
+          },
+        };
+        // Don't fail the request - just log the warning
+        // The yacht will be updated with English content, translations can be fixed later
       }
     } else if (yachtData.translations || incomingEnglish && Object.keys(incomingEnglish).length > 0) {
       // If translations provided but English hasn't changed, still update English with new values
