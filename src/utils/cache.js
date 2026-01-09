@@ -114,9 +114,11 @@ export const cacheYachtList = async (req, res, next) => {
         return originalSend.call(this, data);
       }
 
-      // Cache for 5 minutes (don't block response)
+      // Cache for 10 minutes for yacht lists (longer cache = better performance)
+      // Published yachts don't change frequently
+      const cacheTTL = status === 'published' ? 600 : 300; // 10 min for published, 5 min for drafts/all
       redis
-        .setex(cacheKey, 300, JSON.stringify(data))
+        .setex(cacheKey, cacheTTL, JSON.stringify(data))
         .then(() => {
           const cacheWriteTime = Date.now() - requestStart;
           console.log(

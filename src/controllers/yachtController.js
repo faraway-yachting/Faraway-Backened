@@ -261,6 +261,8 @@ export const getAllYachts = async (req, res, next) => {
     if (status && ['draft', 'published'].includes(status)) {
       filter.status = status;
     }
+    // Note: If no status filter, returns all yachts (for admin panel)
+    // Frontend should explicitly request status=published for better performance
 
     // Lightweight projection for list responses to reduce payload size on slow networks
     // Include translations for multilingual support (yacht titles need to be translated)
@@ -296,13 +298,16 @@ export const getAllYachts = async (req, res, next) => {
     // Sort order: displayOrder (ascending: 1, 2, 3...), then updatedAt (descending), then createdAt (descending)
     // Lower displayOrder numbers appear first (1 = first, 2 = second, etc.)
     // Handle null/undefined displayOrder by treating them as 9999 (appear last)
+    // Optimized sort to match compound index: { status: 1, displayOrder: 1, updatedAt: -1 }
+    const sortOrder = { 
+      displayOrder: 1, // Ascending: 1, 2, 3... (null/undefined treated as 0, but default is 9999)
+      updatedAt: -1, 
+      createdAt: -1 
+    };
+    
     const [yachts, total, recentlyUpdated] = await Promise.all([
       Yacht.find(filter)
-        .sort({ 
-          displayOrder: 1, // Ascending: 1, 2, 3... (null/undefined treated as 0, but default is 9999)
-          updatedAt: -1, 
-          createdAt: -1 
-        })
+        .sort(sortOrder)
         .select(listProjection)
         .skip(skip)
         .limit(parsedLimit)
@@ -311,11 +316,7 @@ export const getAllYachts = async (req, res, next) => {
       Yacht.countDocuments(filter).exec(),
       // Recently updated (last 5) - still sorted by displayOrder first
       Yacht.find(filter)
-        .sort({ 
-          displayOrder: 1, // Ascending: 1, 2, 3... (order 1 shows first)
-          updatedAt: -1, 
-          createdAt: -1 
-        })
+        .sort(sortOrder)
         .select(listProjection)
         .limit(5)
         .lean()

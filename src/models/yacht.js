@@ -91,11 +91,14 @@ const yachtSchema = new mongoose.Schema(
 );
 
 // Add indexes for better query performance
-yachtSchema.index({ status: 1, createdAt: -1 }); // For getAllYachts with status filter
+// Compound indexes for common query patterns
+yachtSchema.index({ status: 1, displayOrder: 1, updatedAt: -1 }); // Most common: published yachts sorted by displayOrder
+yachtSchema.index({ status: 1, type: 1, displayOrder: 1 }); // For filtering by status and type
+yachtSchema.index({ status: 1, updatedAt: -1, createdAt: -1 }); // For getAllYachts with status filter
 // Helpful for recently updated sorts
 yachtSchema.index({ updatedAt: -1 });
 // slug already has unique: true above; avoid duplicate index definitions
-yachtSchema.index({ type: 1 }); // For type-based queries
+yachtSchema.index({ type: 1, status: 1 }); // For type-based queries with status
 yachtSchema.index({ boatType: 1 }); // For boat type filtering
 yachtSchema.index({ price: 1 }); // For price-based queries
 yachtSchema.index({ tags: 1 }); // For tag-based filtering
