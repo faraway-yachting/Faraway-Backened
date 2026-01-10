@@ -697,6 +697,28 @@ export const editYacht = async (req, res, next) => {
     // DO NOT save if translations fail - wait for all languages to be translated
     if (hasEnglishChanges) {
       console.log('✅ English content changed, processing translations before saving...');
+      
+      // Send headers early with Transfer-Encoding: chunked to prevent gateway timeout
+      // This allows us to send periodic keep-alive data while translations process
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Transfer-Encoding': 'chunked',
+        'Connection': 'keep-alive',
+        'Keep-Alive': 'timeout=600',
+      });
+      
+      // Send periodic keep-alive chunks to prevent proxy/gateway timeout (504 errors)
+      // Send a heartbeat every 20 seconds to keep the connection alive during translations
+      const keepAliveInterval = setInterval(() => {
+        try {
+          // Send empty chunk as keep-alive signal (prevents 504 Gateway Timeout)
+          res.write(''); // Empty chunk keeps connection alive
+        } catch (err) {
+          // Connection closed, clear interval
+          clearInterval(keepAliveInterval);
+        }
+      }, 20000); // Every 20 seconds (well within most proxy timeout limits)
+      
       try {
         // Process translations with timeout protection (max 5 minutes)
         const translationPromise = processTranslations(
@@ -712,21 +734,40 @@ export const editYacht = async (req, res, next) => {
         // Wait for ALL translations to complete successfully before proceeding
         const newTranslations = await Promise.race([translationPromise, timeoutPromise]);
         
+        // Clear keep-alive interval once translations complete
+        clearInterval(keepAliveInterval);
+        
         // Verify all required languages are translated
         const requiredLanguages = ['en', 'fr', 'de', 'ru', 'zh', 'th', 'ar'];
         const missingLanguages = requiredLanguages.filter(lang => !newTranslations[lang]);
         
         if (missingLanguages.length > 0) {
           console.error('❌ Missing translations for languages:', missingLanguages);
-          return next(new ApiError(`Translation incomplete: missing translations for ${missingLanguages.join(', ')}`, 500));
+          clearInterval(keepAliveInterval);
+          const errorResponse = JSON.stringify({
+            statusCode: 500,
+            message: `Translation incomplete: missing translations for ${missingLanguages.join(', ')}`,
+            success: false,
+          });
+          res.write(errorResponse);
+          res.end();
+          return;
         }
         
         updateData.translations = newTranslations;
         console.log('✅ All translations completed successfully for all languages');
       } catch (translationError) {
         console.error('❌ Translation error:', translationError.message);
-        // DO NOT save if translations fail - return error instead
-        return next(new ApiError(`Translation failed: ${translationError.message}. Please try again.`, 500));
+        // Clear keep-alive interval on error
+        clearInterval(keepAliveInterval);
+        const errorResponse = JSON.stringify({
+          statusCode: 500,
+          message: `Translation failed: ${translationError.message}. Please try again.`,
+          success: false,
+        });
+        res.write(errorResponse);
+        res.end();
+        return;
       }
     } else if (yachtData.translations || incomingEnglish && Object.keys(incomingEnglish).length > 0) {
       // If translations provided but English hasn't changed, still update English with new values
@@ -769,6 +810,20 @@ export const editYacht = async (req, res, next) => {
     const yachtWithUrls = mapImageFilenamesToUrls(updatedYacht, req);
     
     // Send success response after everything is complete (including translations)
+    // If headers were already sent (chunked transfer), write JSON and end
+    if (res.headersSent) {
+      const successResponse = JSON.stringify({
+        statusCode: 200,
+        message: 'Yacht updated successfully',
+        success: true,
+        data: yachtWithUrls,
+      });
+      res.write(successResponse);
+      res.end();
+      return;
+    }
+    
+    // Otherwise use standard SuccessHandler
     return SuccessHandler(
       yachtWithUrls,
       200,
