@@ -504,6 +504,7 @@ export const editYacht = async (req, res, next) => {
   // Allow up to 6 minutes for image uploads and data processing (translations are async/non-blocking)
   const requestTimeout = setTimeout(() => {
     if (!res.headersSent) {
+      console.error('❌ Request timeout for yacht edit - response not sent within 6 minutes');
       return next(new ApiError('Request timeout - yacht update is taking too long', 504));
     }
   }, 360000); // 6 minutes max for the main update (image uploads + database operations)
@@ -511,6 +512,7 @@ export const editYacht = async (req, res, next) => {
   try {
     const { id } = req.query;
     let yachtData = req.body;
+    console.log('📝 Starting yacht edit for ID:', id);
 
     // Parse translations if sent as JSON string (multipart/form-data)
     if (yachtData?.translations && typeof yachtData.translations === 'string') {
@@ -698,13 +700,14 @@ export const editYacht = async (req, res, next) => {
       console.log('✅ English content updated, translations will be processed in background');
       
       // Process translations asynchronously (non-blocking)
-      // Don't await this - let it run in background after response is sent
-      (async () => {
+      // Use process.nextTick to ensure this runs AFTER the response is sent
+      // This prevents any blocking of the HTTP response
+      process.nextTick(async () => {
         try {
-          // Small delay to ensure response is sent first
-          await new Promise(resolve => setImmediate(resolve));
+          // Additional small delay to ensure HTTP response is fully sent
+          await new Promise(resolve => setTimeout(resolve, 100));
           
-          console.log('🌐 Starting background translation processing...');
+          console.log('🌐 Starting background translation processing for yacht:', id);
           // Add timeout wrapper for translation process (max 5 minutes)
           const translationPromise = processTranslations(
             englishSource,
@@ -721,18 +724,15 @@ export const editYacht = async (req, res, next) => {
           
           // Update yacht with translations in background
           await Yacht.findByIdAndUpdate(id, { translations: newTranslations }, { runValidators: false });
-          console.log('✅ Background translations completed and saved');
+          console.log('✅ Background translations completed and saved for yacht:', id);
           
           // Invalidate caches after background translation completes
           await clearYachtCache();
         } catch (translationError) {
-          console.error('❌ Background translation error:', translationError);
+          console.error('❌ Background translation error for yacht:', id, translationError.message);
           // Don't throw - translations will be updated next time or can be manually triggered
-          console.warn('⚠️ Translations will remain in English. They can be updated later.');
+          console.warn('⚠️ Translations will remain in English for yacht:', id, 'They can be updated later.');
         }
-      })().catch(err => {
-        // Catch any unhandled errors in the async IIFE
-        console.error('❌ Unhandled error in background translation:', err);
       });
     } else if (yachtData.translations || incomingEnglish && Object.keys(incomingEnglish).length > 0) {
       // If translations provided but English hasn't changed, still update English with new values
@@ -760,36 +760,61 @@ export const editYacht = async (req, res, next) => {
     }
 
     // Update the yacht (this happens quickly, before translations complete)
+    console.log('💾 Updating yacht in database...');
     const updatedYacht = await Yacht.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     });
 
+    if (!updatedYacht) {
+      clearTimeout(requestTimeout);
+      console.error('❌ Failed to update yacht - yacht not found after update');
+      return next(new ApiError('Failed to update yacht', 500));
+    }
+
+    console.log('✅ Yacht updated successfully in database for ID:', id);
+
     // Clear timeout since we're about to send response
     clearTimeout(requestTimeout);
 
     // Invalidate caches after edit
+    console.log('🗑️ Invalidating caches...');
     await clearYachtCache();
+    
     // Map image filenames to URLs and return updated yacht
     const yachtWithUrls = mapImageFilenamesToUrls(updatedYacht, req);
+    
+    // Send response FIRST before starting background translations
+    // This ensures the client receives the response immediately
+    const responseMessage = hasEnglishChanges 
+      ? 'Yacht updated successfully. Translations are being processed in the background.'
+      : 'Yacht updated successfully';
+    
+    console.log('📤 Sending response to client for yacht ID:', id);
+    console.log('✅ Yacht edit completed successfully');
+    
+    // Send response immediately
     return SuccessHandler(
       yachtWithUrls,
       200,
-      'Yacht updated successfully. Translations are being processed in the background.',
+      responseMessage,
       res
     );
   } catch (err) {
     // Clear timeout on error
     clearTimeout(requestTimeout);
+    console.error('❌ Error in editYacht:', err);
     
     if (
       err &&
       err.code === 11000 &&
       (err.keyPattern?.slug || err.keyValue?.slug)
     ) {
+      console.error('❌ Duplicate slug error');
       return next(new ApiError('Yacht with this slug already exists', 409));
     }
-    next(new ApiError(err.message, 400));
+    console.error('❌ General error:', err.message);
+    next(new ApiError(err.message || 'Failed to update yacht', 400));
   }
 };
 
