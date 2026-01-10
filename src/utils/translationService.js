@@ -224,7 +224,7 @@ Return ONLY the translated text in ${languageName}.`;
   };
   
   const maxRetries = 5;
-  const timeout = Math.max(120000, Math.min(inputTokens * 50, 300000)); // Dynamic timeout: 50ms per token, min 120s, max 300s
+  const timeout = Math.max(120000, Math.min(inputTokens * 50, 600000)); // Dynamic timeout: 50ms per token, min 120s, max 600s (10 minutes)
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {

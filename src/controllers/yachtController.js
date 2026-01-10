@@ -216,12 +216,12 @@ export const addYacht = async (req, res, next) => {
     }
 
     // Auto-translate to all configured locales
-    // Add timeout protection (max 5 minutes for translation)
+    // Add timeout protection (max 10 minutes for translation)
     let translations;
     try {
       const translationPromise = processTranslations(englishSource, YACHT_FIELD_CONFIG);
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Translation timeout after 5 minutes')), 300000)
+        setTimeout(() => reject(new Error('Translation timeout after 10 minutes')), 600000)
       );
       
       translations = await Promise.race([translationPromise, timeoutPromise]);
@@ -722,7 +722,7 @@ export const editYacht = async (req, res, next) => {
       }, 15000); // Every 15 seconds (well within nginx's default 60s timeout)
       
       try {
-        // Process translations with timeout protection (max 5 minutes)
+        // Process translations with timeout protection (max 10 minutes)
         const translationPromise = processTranslations(
           englishSource,
           YACHT_FIELD_CONFIG,
@@ -730,7 +730,7 @@ export const editYacht = async (req, res, next) => {
         );
         
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Translation timeout after 5 minutes')), 300000)
+          setTimeout(() => reject(new Error('Translation timeout after 10 minutes')), 600000)
         );
         
         // Wait for ALL translations to complete successfully before proceeding
