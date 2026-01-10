@@ -708,16 +708,18 @@ export const editYacht = async (req, res, next) => {
       });
       
       // Send periodic keep-alive chunks to prevent proxy/gateway timeout (504 errors)
-      // Send a heartbeat every 20 seconds to keep the connection alive during translations
+      // Send a heartbeat every 15 seconds to keep the connection alive during translations
+      // This prevents nginx/proxy from closing the connection (default timeout is 60s)
       const keepAliveInterval = setInterval(() => {
         try {
-          // Send empty chunk as keep-alive signal (prevents 504 Gateway Timeout)
-          res.write(''); // Empty chunk keeps connection alive
+          // Send a space character as keep-alive chunk (prevents 504 Gateway Timeout)
+          // Empty string might not work, so send a minimal chunk
+          res.write(' '); // Space character as keep-alive signal
         } catch (err) {
           // Connection closed, clear interval
           clearInterval(keepAliveInterval);
         }
-      }, 20000); // Every 20 seconds (well within most proxy timeout limits)
+      }, 15000); // Every 15 seconds (well within nginx's default 60s timeout)
       
       try {
         // Process translations with timeout protection (max 5 minutes)
