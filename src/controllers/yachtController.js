@@ -40,6 +40,10 @@ const getSlugOrFail = (data) => {
 
 // Add a new yacht
 export const addYacht = async (req, res, next) => {
+  // Set keep-alive headers to prevent connection timeout during long translations
+  res.set('Connection', 'keep-alive');
+  res.set('Keep-Alive', 'timeout=1200'); // 20 minutes
+  
   try {
     let yachtData = req.body;
 
@@ -500,13 +504,18 @@ export const deleteYacht = async (req, res, next) => {
 // Edit yacht by ID
 export const editYacht = async (req, res, next) => {
   // Set a timeout for the entire request to prevent hanging
-  // Note: File uploads (primary image + gallery images) can take time, especially with multiple large files
-  // Allow up to 6 minutes for image uploads and data processing (translations are async/non-blocking)
+  // Note: Translations can take up to 5 minutes, plus file uploads and processing
+  // Allow up to 20 minutes total (same as add) to handle translations + image uploads + database operations
   const requestTimeout = setTimeout(() => {
     if (!res.headersSent) {
       return next(new ApiError('Request timeout - yacht update is taking too long', 504));
     }
-  }, 360000); // 6 minutes max for the main update (image uploads + database operations)
+  }, 1200000); // 20 minutes max (same as add - 5 min translations + uploads/processing)
+  
+  // Set keep-alive headers to prevent connection timeout during long translations
+  // This keeps the connection alive while translations process
+  res.set('Connection', 'keep-alive');
+  res.set('Keep-Alive', 'timeout=1200'); // 20 minutes
 
   try {
     const { id } = req.query;
