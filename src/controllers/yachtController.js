@@ -499,6 +499,15 @@ export const deleteYacht = async (req, res, next) => {
 
 // Edit yacht by ID
 export const editYacht = async (req, res, next) => {
+  // Set a timeout for the entire request to prevent hanging
+  // Note: File uploads (primary image + gallery images) can take time, especially with multiple large files
+  // Allow up to 6 minutes for image uploads and data processing (translations are async/non-blocking)
+  const requestTimeout = setTimeout(() => {
+    if (!res.headersSent) {
+      return next(new ApiError('Request timeout - yacht update is taking too long', 504));
+    }
+  }, 360000); // 6 minutes max for the main update (image uploads + database operations)
+
   try {
     const { id } = req.query;
     let yachtData = req.body;
@@ -675,39 +684,56 @@ export const editYacht = async (req, res, next) => {
       normalizeValue(englishSource.boatLayout) !== normalizeValue(currentEnglish.boatLayout) ||
       normalizeTags(englishSource.tags) !== normalizeTags(currentEnglish.tags);
 
-    // If English content has changed, re-translate all languages
+    // If English content has changed, update English first, then process translations asynchronously
+    // This ensures fast response time even if translations take long
     if (hasEnglishChanges) {
-      try {
-        // Add timeout wrapper for translation process (max 5 minutes)
-        const translationPromise = processTranslations(
-          englishSource,
-          YACHT_FIELD_CONFIG,
-          currentTranslations
-        );
-        
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Translation timeout after 5 minutes')), 300000)
-        );
-        
-        // Process translations with timeout protection
-        updateData.translations = await Promise.race([translationPromise, timeoutPromise]);
-        console.log('✅ Translations updated: English content changed, all languages re-translated');
-      } catch (translationError) {
-        console.error('❌ Translation error:', translationError);
-        
-        // If translation fails or times out, update English only and keep existing translations
-        // This allows the edit to succeed even if translation service is slow
-        console.warn('⚠️ Translation failed, updating English only and preserving existing translations');
-        updateData.translations = {
-          ...currentTranslations,
-          en: {
-            ...currentTranslations.en,
-            ...englishSource,
-          },
-        };
-        // Don't fail the request - just log the warning
-        // The yacht will be updated with English content, translations can be fixed later
-      }
+      // Update English immediately to save quickly
+      updateData.translations = {
+        ...currentTranslations,
+        en: {
+          ...currentTranslations.en,
+          ...englishSource,
+        },
+      };
+      console.log('✅ English content updated, translations will be processed in background');
+      
+      // Process translations asynchronously (non-blocking)
+      // Don't await this - let it run in background after response is sent
+      (async () => {
+        try {
+          // Small delay to ensure response is sent first
+          await new Promise(resolve => setImmediate(resolve));
+          
+          console.log('🌐 Starting background translation processing...');
+          // Add timeout wrapper for translation process (max 5 minutes)
+          const translationPromise = processTranslations(
+            englishSource,
+            YACHT_FIELD_CONFIG,
+            currentTranslations
+          );
+          
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Translation timeout after 5 minutes')), 300000)
+          );
+          
+          // Process translations with timeout protection
+          const newTranslations = await Promise.race([translationPromise, timeoutPromise]);
+          
+          // Update yacht with translations in background
+          await Yacht.findByIdAndUpdate(id, { translations: newTranslations }, { runValidators: false });
+          console.log('✅ Background translations completed and saved');
+          
+          // Invalidate caches after background translation completes
+          await clearYachtCache();
+        } catch (translationError) {
+          console.error('❌ Background translation error:', translationError);
+          // Don't throw - translations will be updated next time or can be manually triggered
+          console.warn('⚠️ Translations will remain in English. They can be updated later.');
+        }
+      })().catch(err => {
+        // Catch any unhandled errors in the async IIFE
+        console.error('❌ Unhandled error in background translation:', err);
+      });
     } else if (yachtData.translations || incomingEnglish && Object.keys(incomingEnglish).length > 0) {
       // If translations provided but English hasn't changed, still update English with new values
       // This ensures English is updated even if comparison didn't detect changes (e.g., same content but different format)
@@ -733,11 +759,14 @@ export const editYacht = async (req, res, next) => {
       updateData.slug = existingYacht.slug;
     }
 
-    // Update the yacht
+    // Update the yacht (this happens quickly, before translations complete)
     const updatedYacht = await Yacht.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     });
+
+    // Clear timeout since we're about to send response
+    clearTimeout(requestTimeout);
 
     // Invalidate caches after edit
     await clearYachtCache();
@@ -746,10 +775,13 @@ export const editYacht = async (req, res, next) => {
     return SuccessHandler(
       yachtWithUrls,
       200,
-      'Yacht updated successfully',
+      'Yacht updated successfully. Translations are being processed in the background.',
       res
     );
   } catch (err) {
+    // Clear timeout on error
+    clearTimeout(requestTimeout);
+    
     if (
       err &&
       err.code === 11000 &&
