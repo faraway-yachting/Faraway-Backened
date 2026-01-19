@@ -5,6 +5,8 @@ import SuccessHandler from '../utils/SuccessHandler.js';
 import { clearBlogCache } from '../utils/cache.js';
 import { uploadToCloudinary } from '../utils/cloudinaryUtil.js';
 import paginate from '../utils/paginate.js';
+import { processTranslations } from '../utils/translationHelper.js';
+import { BLOG_FIELD_CONFIG } from '../utils/translationService.js';
 import {
   addBlogSchema,
   deleteBlogSchema,
@@ -14,12 +16,36 @@ import {
   updateBlogStatusSchema,
 } from '../validations/blog.validation.js';
 
+const normalizeSlug = (value) => value?.trim()?.toLowerCase();
+const isValidSlug = (value) => /^[a-z0-9-]+$/.test(value || '');
+
+const getSlugOrFail = (data) => {
+  const rawSlug = data?.translations?.en?.slug || data?.slug;
+  const normalized = normalizeSlug(rawSlug);
+  if (!normalized) {
+    throw new ApiError('Slug is required', 400);
+  }
+  if (!isValidSlug(normalized)) {
+    throw new ApiError('Slug can only contain lowercase letters, numbers, and hyphens', 400);
+  }
+  return normalized;
+};
+
 // Add a new blog
 export const addBlog = async (req, res, next) => {
   try {
     logger.info('📝 Add blog request received');
 
     let blogData = req.body;
+
+    // Parse translations if sent as JSON string (multipart/form-data)
+    if (blogData?.translations && typeof blogData.translations === 'string') {
+      try {
+        blogData.translations = JSON.parse(blogData.translations);
+      } catch (err) {
+        return next(new ApiError('Invalid translations format', 400));
+      }
+    }
 
     // Check if image is uploaded
     if (!req.files || !req.files.image || !req.files.image[0]) {
@@ -84,6 +110,17 @@ export const addBlog = async (req, res, next) => {
       }
     }
 
+    // Derive canonical slug from translations
+    try {
+      const canonicalSlug = getSlugOrFail(blogData);
+      if (!blogData.translations || !blogData.translations.en) {
+        return next(new ApiError('English translations (translations.en) are required', 400));
+      }
+      blogData.translations.en.slug = canonicalSlug;
+    } catch (slugError) {
+      return next(slugError);
+    }
+
     // Now validate blogData
     const { error } = addBlogSchema.validate(blogData);
     if (error) {
@@ -94,8 +131,10 @@ export const addBlog = async (req, res, next) => {
       return next(new ApiError(error.details[0].message, 400));
     }
 
-    // Check if slug already exists
-    const existingBlog = await Blog.findOne({ slug: blogData.slug });
+    // Check if slug already exists based on translations.en.slug
+    const existingBlog = await Blog.findOne({
+      'translations.en.slug': blogData.translations?.en?.slug,
+    });
     if (existingBlog) {
       logger.warn({
         message: `❌ Blog with slug already exists: ${blogData.slug}`,
@@ -104,12 +143,41 @@ export const addBlog = async (req, res, next) => {
       return next(new ApiError('Blog with this slug already exists', 409));
     }
 
-    const newBlog = await Blog.create(blogData);
+    // Build pure English source from translations.en and auto-translate
+    const en = blogData.translations.en;
+    const englishSource = {
+      slug: en.slug,
+      title: en.title,
+      shortDescription: en.shortDescription,
+      detailDescription: en.detailDescription,
+    };
+
+    let translations;
+    try {
+      translations = await processTranslations(englishSource, BLOG_FIELD_CONFIG);
+    } catch (translationError) {
+      logger.error('❌ Blog translation failed:', translationError);
+      return next(
+        new ApiError(
+          'Failed to translate blog content. Please try again later.',
+          502
+        )
+      );
+    }
+
+    // Prepare blog data with translations
+    const blogToCreate = {
+      image: blogData.image,
+      status: blogData.status || 'draft',
+      translations: translations || {},
+    };
+
+    const newBlog = await Blog.create(blogToCreate);
     // Invalidate blog caches so lists reflect the new item
     await clearBlogCache();
 
     logger.info({
-      message: `✅ Blog created successfully: ${newBlog.title}`,
+      message: `✅ Blog created successfully: ${newBlog.translations?.en?.title || 'Untitled'}`,
       timestamp: new Date().toISOString(),
     });
 
@@ -211,9 +279,62 @@ export const getBlogBySlug = async (req, res, next) => {
     }
 
     const { slug } = req.query;
+    
+    // Decode URL-encoded slug (handles Unicode characters like Arabic, Chinese, Thai)
+    let decodedSlug = slug;
+    try {
+      decodedSlug = decodeURIComponent(slug);
+    } catch (e) {
+      // If decoding fails, use original slug
+      logger.warn(`Failed to decode slug: ${slug}`, e);
+    }
+    
+    // Normalize: trim whitespace, lowercase only for Latin-based languages
+    // For Unicode languages (Arabic, Chinese, Thai), preserve original case
+    const trimmedSlug = decodedSlug?.trim() || '';
+    
+    // For Latin-based languages, also lowercase for comparison
+    // For Unicode languages, keep as-is
+    const isLatinBased = /^[a-zA-Z0-9\s\-_]+$/.test(trimmedSlug);
+    const normalizedSlug = isLatinBased ? trimmedSlug.toLowerCase() : trimmedSlug;
 
-    // Use lean() for better performance and return all fields
-    const blog = await Blog.findOne({ slug }).lean().exec();
+    logger.info(`🔍 Searching for blog with slug: "${slug}" (decoded: "${decodedSlug}", normalized: "${normalizedSlug}")`);
+
+    // Build search conditions for all languages
+    // Try both original slug and normalized versions to handle all cases
+    const searchConditions = [
+      { 'translations.en.slug': normalizedSlug },
+      { 'translations.en.slug': trimmedSlug },
+      { 'translations.ar.slug': normalizedSlug },
+      { 'translations.ar.slug': trimmedSlug },
+      { 'translations.fr.slug': normalizedSlug },
+      { 'translations.fr.slug': trimmedSlug },
+      { 'translations.de.slug': normalizedSlug },
+      { 'translations.de.slug': trimmedSlug },
+      { 'translations.ru.slug': normalizedSlug },
+      { 'translations.ru.slug': trimmedSlug },
+      { 'translations.zh.slug': normalizedSlug },
+      { 'translations.zh.slug': trimmedSlug },
+      { 'translations.th.slug': normalizedSlug },
+      { 'translations.th.slug': trimmedSlug },
+    ];
+
+    // Also try the original slug (in case it's already in the correct format)
+    if (slug !== decodedSlug) {
+      searchConditions.push(
+        { 'translations.en.slug': slug },
+        { 'translations.ar.slug': slug },
+        { 'translations.fr.slug': slug },
+        { 'translations.de.slug': slug },
+        { 'translations.ru.slug': slug },
+        { 'translations.zh.slug': slug },
+        { 'translations.th.slug': slug },
+      );
+    }
+
+    const blog = await Blog.findOne({
+      $or: searchConditions,
+    }).lean().exec();
 
     if (!blog) {
       logger.warn({
@@ -236,6 +357,15 @@ export const editBlog = async (req, res, next) => {
 
     const { id } = req.query;
     let blogData = req.body;
+
+    // Parse translations if sent as JSON string (multipart/form-data)
+    if (blogData?.translations && typeof blogData.translations === 'string') {
+      try {
+        blogData.translations = JSON.parse(blogData.translations);
+      } catch (err) {
+        return next(new ApiError('Invalid translations format', 400));
+      }
+    }
 
     // Validate blog ID
     const { error: idError } = getBlogByIdSchema.validate({ id });
@@ -278,16 +408,30 @@ export const editBlog = async (req, res, next) => {
       }
     }
 
+    // Derive slug if provided (from translations.en.slug or body)
+    let incomingSlug = null;
+    if (blogData.translations?.en?.slug || blogData.slug) {
+      try {
+        incomingSlug = getSlugOrFail(blogData);
+        if (!blogData.translations) blogData.translations = {};
+        if (!blogData.translations.en) blogData.translations.en = {};
+        blogData.translations.en.slug = incomingSlug;
+      } catch (slugError) {
+        return next(slugError);
+      }
+    }
+
     // Validate blog data
     const { error: validationError } = editBlogSchema.validate(blogData);
     if (validationError) {
       return next(new ApiError(validationError.details[0].message, 400));
     }
 
-    // Check if slug is being updated and if it already exists
-    if (blogData.slug && blogData.slug !== existingBlog.slug) {
+    // Check if slug is being updated and if it already exists (based on translations.en.slug)
+    const currentSlug = existingBlog?.translations?.en?.slug;
+    if (incomingSlug && incomingSlug !== currentSlug) {
       const slugExists = await Blog.findOne({
-        slug: blogData.slug,
+        'translations.en.slug': incomingSlug,
         _id: { $ne: id },
       });
       if (slugExists) {
@@ -295,14 +439,47 @@ export const editBlog = async (req, res, next) => {
       }
     }
 
+    let updateData = { ...blogData };
+    if (!blogData.translations && (blogData.title || blogData.shortDescription || blogData.detailDescription)) {
+      const currentTranslations = existingBlog.translations || {};
+      try {
+        updateData.translations = await processTranslations(
+          blogData,
+          BLOG_FIELD_CONFIG,
+          currentTranslations
+        );
+      } catch (translationError) {
+        logger.error('❌ Blog translation failed during update:', translationError);
+        return next(
+          new ApiError(
+            'Failed to translate blog content while updating. Please try again later.',
+            502
+          )
+        );
+      }
+      
+      delete updateData.title;
+      delete updateData.shortDescription;
+      delete updateData.detailDescription;
+    }
+
+    // Ensure slug in translations.en stays unchanged if not provided
+    if (!incomingSlug) {
+      if (!updateData.translations) updateData.translations = existingBlog.translations;
+      else if (!updateData.translations.en) updateData.translations.en = existingBlog.translations?.en;
+      if (!updateData.translations?.en?.slug && existingBlog.translations?.en?.slug) {
+        updateData.translations.en.slug = existingBlog.translations.en.slug;
+      }
+    }
+
     // Update the blog
-    const updatedBlog = await Blog.findByIdAndUpdate(id, blogData, {
+    const updatedBlog = await Blog.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     });
 
     logger.info({
-      message: `✅ Blog updated successfully: ${updatedBlog.title}`,
+      message: `✅ Blog updated successfully: ${updatedBlog.translations?.en?.title || 'Untitled'}`,
       timestamp: new Date().toISOString(),
     });
 
@@ -333,7 +510,7 @@ export const deleteBlog = async (req, res, next) => {
     }
 
     logger.info({
-      message: `✅ Blog deleted successfully: ${blog.title}`,
+      message: `✅ Blog deleted successfully: ${blog.translations?.en?.title || 'Untitled'}`,
       timestamp: new Date().toISOString(),
     });
 
@@ -380,7 +557,7 @@ export const updateBlogStatus = async (req, res, next) => {
     );
 
     logger.info({
-      message: `✅ Blog status updated to ${status}: ${updatedBlog.title}`,
+      message: `✅ Blog status updated to ${status}: ${updatedBlog.translations?.en?.title || 'Untitled'}`,
       timestamp: new Date().toISOString(),
     });
 

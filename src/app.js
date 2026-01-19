@@ -32,6 +32,9 @@ const startServer = async () => {
     app.disable('etag');
     app.use((req, res, next) => {
       res.set('Cache-Control', 'no-store');
+      // Set keep-alive headers for all requests to prevent gateway timeouts
+      res.set('Connection', 'keep-alive');
+      res.set('Keep-Alive', 'timeout=600'); // 10 minutes
       next();
     });
 
@@ -40,9 +43,10 @@ const startServer = async () => {
       cors({
         origin: [
           'https://faraway-admin-panel.vercel.app',
-          'http://localhost:3000',
+          'http://localhost:3000','http://localhost:3001',
           'https://fa-taupe.vercel.app',
           'https://faraway-admin-pannel.vercel.app',
+          'https://faraway-admin-pannel-dev.vercel.app',
           'https://faraway-psi.vercel.app',
           'https://www.faraway-yachting.com',
           'https://dev-faraway-psi.vercel.app',
