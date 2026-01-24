@@ -34,7 +34,7 @@ const startServer = async () => {
       res.set('Cache-Control', 'no-store');
       // Set keep-alive headers for all requests to prevent gateway timeouts
       res.set('Connection', 'keep-alive');
-      res.set('Keep-Alive', 'timeout=600'); // 10 minutes
+      res.set('Keep-Alive', 'timeout=1800'); // 30 minutes (increased for yacht edit with translations and large uploads)
       next();
     });
 

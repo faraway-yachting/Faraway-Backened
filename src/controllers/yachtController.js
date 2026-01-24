@@ -42,7 +42,7 @@ const getSlugOrFail = (data) => {
 export const addYacht = async (req, res, next) => {
   // Set keep-alive headers to prevent connection timeout during long translations
   res.set('Connection', 'keep-alive');
-  res.set('Keep-Alive', 'timeout=1200'); // 20 minutes
+  res.set('Keep-Alive', 'timeout=1800'); // 30 minutes (increased for translation processing and large uploads)
   
   try {
     let yachtData = req.body;
@@ -216,12 +216,12 @@ export const addYacht = async (req, res, next) => {
     }
 
     // Auto-translate to all configured locales
-    // Add timeout protection (max 10 minutes for translation)
+    // Add timeout protection (max 30 minutes for translation)
     let translations;
     try {
       const translationPromise = processTranslations(englishSource, YACHT_FIELD_CONFIG);
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Translation timeout after 10 minutes')), 600000)
+        setTimeout(() => reject(new Error('Translation timeout after 30 minutes')), 1800000)
       );
       
       translations = await Promise.race([translationPromise, timeoutPromise]);
@@ -504,18 +504,18 @@ export const deleteYacht = async (req, res, next) => {
 // Edit yacht by ID
 export const editYacht = async (req, res, next) => {
   // Set a timeout for the entire request to prevent hanging
-  // Note: Translations can take up to 5 minutes, plus file uploads and processing
-  // Allow up to 20 minutes total (same as add) to handle translations + image uploads + database operations
+  // Note: Translations can take up to 10 minutes, plus file uploads and processing
+  // Allow up to 30 minutes total to handle translations + image uploads + database operations
   const requestTimeout = setTimeout(() => {
     if (!res.headersSent) {
       return next(new ApiError('Request timeout - yacht update is taking too long', 504));
     }
-  }, 1200000); // 20 minutes max (same as add - 5 min translations + uploads/processing)
+  }, 1800000); // 30 minutes max (allows time for translations + uploads/processing)
   
   // Set keep-alive headers to prevent connection timeout during long translations
   // This keeps the connection alive while translations process
   res.set('Connection', 'keep-alive');
-  res.set('Keep-Alive', 'timeout=1200'); // 20 minutes
+  res.set('Keep-Alive', 'timeout=1800'); // 30 minutes
 
   try {
     const { id } = req.query;
@@ -704,7 +704,7 @@ export const editYacht = async (req, res, next) => {
         'Content-Type': 'application/json',
         'Transfer-Encoding': 'chunked',
         'Connection': 'keep-alive',
-        'Keep-Alive': 'timeout=600',
+        'Keep-Alive': 'timeout=1800', // 30 minutes (matches request timeout)
       });
       
       // Send periodic keep-alive chunks to prevent proxy/gateway timeout (504 errors)
@@ -722,7 +722,7 @@ export const editYacht = async (req, res, next) => {
       }, 15000); // Every 15 seconds (well within nginx's default 60s timeout)
       
       try {
-        // Process translations with timeout protection (max 10 minutes)
+        // Process translations with timeout protection (max 30 minutes)
         const translationPromise = processTranslations(
           englishSource,
           YACHT_FIELD_CONFIG,
@@ -730,7 +730,7 @@ export const editYacht = async (req, res, next) => {
         );
         
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Translation timeout after 10 minutes')), 600000)
+          setTimeout(() => reject(new Error('Translation timeout after 30 minutes')), 1800000)
         );
         
         // Wait for ALL translations to complete successfully before proceeding
