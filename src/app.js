@@ -5,7 +5,6 @@ import cors from 'cors';
 import express from 'express';
 import path from 'path';
 
-import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import ApiErrorMiddleware from './middleware/ApiError.middleware.js';
 import { helmetMiddleware } from './middleware/helmet.middleware.js';
@@ -22,8 +21,13 @@ const startServer = async () => {
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true, limit: '10mb' }));
     app.use(cookieParser());
-    // HTTP compression for faster responses on slow networks
-    app.use(compression());
+    // HTTP compression for faster responses on slow networks (optional: skip if not installed)
+    try {
+      const { default: compression } = await import('compression');
+      app.use(compression());
+    } catch (e) {
+      console.warn('⚠️ compression not installed, skipping gzip middleware. Run: npm install compression');
+    }
 
     // Security headers with helmet
     app.use(helmetMiddleware);
@@ -34,7 +38,7 @@ const startServer = async () => {
       res.set('Cache-Control', 'no-store');
       // Set keep-alive headers for all requests to prevent gateway timeouts
       res.set('Connection', 'keep-alive');
-      res.set('Keep-Alive', 'timeout=600'); // 10 minutes
+      res.set('Keep-Alive', 'timeout=1800'); // 30 minutes (increased for yacht edit with translations and large uploads)
       next();
     });
 
