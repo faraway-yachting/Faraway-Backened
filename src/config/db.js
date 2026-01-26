@@ -12,23 +12,24 @@ const connectDB = async () => {
             throw new Error('MONGO_URI environment variable is not set');
         }
 
-        // Connection options for better performance and resilience to timeouts
+        // Connection options for better performance and handling intermittent timeouts
         const options = {
-            maxPoolSize: 10,
-            minPoolSize: 0,  // Avoid idle connections that can go stale and timeout
-            serverSelectionTimeoutMS: 5000,
-            connectTimeoutMS: 10000,
-            socketTimeoutMS: 20000,
-            maxIdleTimeMS: 60000, // Close idle connections after 1 min (reduces stale timeouts)
-            waitQueueTimeoutMS: 10000, // Fail fast if no pool connection within 10s
-            bufferCommands: false,
+            maxPoolSize: 10, // Maximum number of connections in the pool
+            minPoolSize: 0,  // Don't keep idle connections (prevents stale connection reuse)
+            serverSelectionTimeoutMS: 5000, // Timeout for server selection
+            connectTimeoutMS: 10000, // Fail fast on initial connect
+            socketTimeoutMS: 30000, // Socket timeout (30s - prevents long hangs)
+            maxIdleTimeMS: 30000, // Close idle connections after 30s (prevents stale connections)
+            heartbeatFrequencyMS: 10000, // Check connection health every 10s
+            bufferCommands: false, // Disable mongoose buffering
         };
 
         const { connection } = await mongoose.connect(process.env.MONGO_URI, options);
+        console.log('✅ Database connected successfully');
 
         // Set up connection event listeners
         connection.on('connected', () => {
-        console.log('✅ Database connected successfully');
+            console.log('✅ Database connected successfully');
         });
 
         connection.on('error', (err) => {
@@ -37,6 +38,10 @@ const connectDB = async () => {
 
         connection.on('disconnected', () => {
             console.log('⚠️ Database disconnected');
+        });
+
+        connection.on('reconnected', () => {
+            console.log('🔄 Database reconnected');
         });
 
         // Graceful shutdown
