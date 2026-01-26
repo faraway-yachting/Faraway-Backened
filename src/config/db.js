@@ -12,14 +12,16 @@ const connectDB = async () => {
             throw new Error('MONGO_URI environment variable is not set');
         }
 
-        // Connection options for better performance and fail-fast on timeouts
+        // Connection options for better performance and resilience to timeouts
         const options = {
-            maxPoolSize: 10, // Maximum number of connections in the pool
-            minPoolSize: 2,  // Minimum number of connections in the pool
-            serverSelectionTimeoutMS: 5000, // Timeout for server selection
-            connectTimeoutMS: 10000, // Fail fast on initial connect (avoids long hangs)
-            socketTimeoutMS: 20000, // Socket timeout (reduced from 45s to fail ~20s vs ~90s on timeout)
-            bufferCommands: false, // Disable mongoose buffering
+            maxPoolSize: 10,
+            minPoolSize: 0,  // Avoid idle connections that can go stale and timeout
+            serverSelectionTimeoutMS: 5000,
+            connectTimeoutMS: 10000,
+            socketTimeoutMS: 20000,
+            maxIdleTimeMS: 60000, // Close idle connections after 1 min (reduces stale timeouts)
+            waitQueueTimeoutMS: 10000, // Fail fast if no pool connection within 10s
+            bufferCommands: false,
         };
 
         const { connection } = await mongoose.connect(process.env.MONGO_URI, options);
