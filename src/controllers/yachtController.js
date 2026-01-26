@@ -44,6 +44,31 @@ export const addYacht = async (req, res, next) => {
   res.set('Connection', 'keep-alive');
   res.set('Keep-Alive', 'timeout=1200'); // 20 minutes
   
+  // Track cleanup resources
+  const cleanupResources = {
+    timeouts: [],
+    intervals: [],
+  };
+  
+  // Cleanup function to clear all resources
+  const cleanup = () => {
+    cleanupResources.timeouts.forEach(timeout => clearTimeout(timeout));
+    cleanupResources.intervals.forEach(interval => clearInterval(interval));
+    cleanupResources.timeouts = [];
+    cleanupResources.intervals = [];
+  };
+  
+  // Handle client disconnection
+  req.on('close', () => {
+    console.log('⚠️ Client disconnected during addYacht request');
+    cleanup();
+  });
+  
+  req.on('aborted', () => {
+    console.log('⚠️ Request aborted by client during addYacht');
+    cleanup();
+  });
+  
   try {
     let yachtData = req.body;
 
@@ -216,16 +241,55 @@ export const addYacht = async (req, res, next) => {
     }
 
     // Auto-translate to all configured locales
-    // Add timeout protection (max 10 minutes for translation)
+    // Add timeout protection (max 30 minutes for translation)
     let translations;
+    let translationTimeout;
     try {
+      // Check if client disconnected before starting translation
+      if (req.aborted || req.destroyed) {
+        return next(new ApiError('Request cancelled by client', 499));
+      }
+
       const translationPromise = processTranslations(englishSource, YACHT_FIELD_CONFIG);
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Translation timeout after 10 minutes')), 600000)
-      );
+      const timeoutPromise = new Promise((_, reject) => {
+        translationTimeout = setTimeout(() => reject(new Error('Translation timeout after 30 minutes')), 1800000);
+      });
       
+      // Check for client disconnection periodically during translation
+      const checkClientConnection = setInterval(() => {
+        if (req.aborted || req.destroyed) {
+          clearInterval(checkClientConnection);
+          clearTimeout(translationTimeout);
+          cleanup();
+          console.log('⚠️ Client disconnected during translation, aborting...');
+        }
+      }, 5000); // Check every 5 seconds
+      
+      cleanupResources.intervals.push(checkClientConnection);
+      cleanupResources.timeouts.push(translationTimeout);
+
       translations = await Promise.race([translationPromise, timeoutPromise]);
+      
+      // Clean up
+      clearInterval(checkClientConnection);
+      clearTimeout(translationTimeout);
+      cleanupResources.intervals = cleanupResources.intervals.filter(i => i !== checkClientConnection);
+      cleanupResources.timeouts = cleanupResources.timeouts.filter(t => t !== translationTimeout);
+      
+      // Check again if client disconnected after translation
+      if (req.aborted || req.destroyed) {
+        return next(new ApiError('Request cancelled by client', 499));
+      }
     } catch (translationError) {
+      // Clean up all resources on error
+      cleanup();
+      
+      // Check if error was due to client disconnection
+      if (req.aborted || req.destroyed) {
+        console.log('⚠️ Client disconnected during translation');
+        return next(new ApiError('Request cancelled by client', 499));
+      }
+      
       console.error('❌ Translation error during yacht creation:', translationError);
       return next(
         new ApiError(
@@ -261,8 +325,13 @@ export const addYacht = async (req, res, next) => {
     await clearYachtCache();
     // Map image filenames to URLs and return new yacht
     const yachtWithUrls = mapImageFilenamesToUrls(newYacht, req);
+    // Clean up before sending response
+    cleanup();
     return SuccessHandler(yachtWithUrls, 201, 'Yacht added successfully', res);
   } catch (err) {
+    // Clean up on error
+    cleanup();
+    
     if (
       err &&
       err.code === 11000 &&
@@ -517,6 +586,31 @@ export const editYacht = async (req, res, next) => {
   res.set('Connection', 'keep-alive');
   res.set('Keep-Alive', 'timeout=1200'); // 20 minutes
 
+  // Track cleanup resources
+  const cleanupResources = {
+    timeouts: [requestTimeout],
+    intervals: [],
+  };
+  
+  // Cleanup function to clear all resources
+  const cleanup = () => {
+    cleanupResources.timeouts.forEach(timeout => clearTimeout(timeout));
+    cleanupResources.intervals.forEach(interval => clearInterval(interval));
+    cleanupResources.timeouts = [];
+    cleanupResources.intervals = [];
+  };
+  
+  // Handle client disconnection
+  req.on('close', () => {
+    console.log('⚠️ Client disconnected during editYacht request');
+    cleanup();
+  });
+  
+  req.on('aborted', () => {
+    console.log('⚠️ Request aborted by client during editYacht');
+    cleanup();
+  });
+
   try {
     const { id } = req.query;
     let yachtData = req.body;
@@ -698,6 +792,12 @@ export const editYacht = async (req, res, next) => {
     if (hasEnglishChanges) {
       console.log('✅ English content changed, processing translations before saving...');
       
+      // Check if client disconnected before starting translation
+      if (req.aborted || req.destroyed) {
+        clearTimeout(requestTimeout);
+        return next(new ApiError('Request cancelled by client', 499));
+      }
+      
       // Send headers early with Transfer-Encoding: chunked to prevent gateway timeout
       // This allows us to send periodic keep-alive data while translations process
       res.writeHead(200, {
@@ -710,34 +810,72 @@ export const editYacht = async (req, res, next) => {
       // Send periodic keep-alive chunks to prevent proxy/gateway timeout (504 errors)
       // Send a heartbeat every 15 seconds to keep the connection alive during translations
       // This prevents nginx/proxy from closing the connection (default timeout is 60s)
-      const keepAliveInterval = setInterval(() => {
+      let keepAliveInterval = setInterval(() => {
         try {
+          // Check if client disconnected
+          if (req.aborted || req.destroyed) {
+            clearInterval(keepAliveInterval);
+            keepAliveInterval = null;
+            console.log('⚠️ Client disconnected, stopping keep-alive');
+            return;
+          }
           // Send a space character as keep-alive chunk (prevents 504 Gateway Timeout)
           // Empty string might not work, so send a minimal chunk
           res.write(' '); // Space character as keep-alive signal
         } catch (err) {
           // Connection closed, clear interval
           clearInterval(keepAliveInterval);
+          keepAliveInterval = null;
         }
       }, 15000); // Every 15 seconds (well within nginx's default 60s timeout)
       
+      let translationTimeout;
       try {
-        // Process translations with timeout protection (max 10 minutes)
+        // Process translations with timeout protection (max 30 minutes)
         const translationPromise = processTranslations(
           englishSource,
           YACHT_FIELD_CONFIG,
           currentTranslations
         );
         
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Translation timeout after 10 minutes')), 600000)
-        );
+        const timeoutPromise = new Promise((_, reject) => {
+          translationTimeout = setTimeout(() => reject(new Error('Translation timeout after 30 minutes')), 1800000);
+        });
+        
+        // Check for client disconnection periodically during translation
+        const checkClientConnection = setInterval(() => {
+          if (req.aborted || req.destroyed) {
+            clearInterval(checkClientConnection);
+            clearInterval(keepAliveInterval);
+            keepAliveInterval = null;
+            clearTimeout(translationTimeout);
+            cleanup();
+            console.log('⚠️ Client disconnected during translation, aborting...');
+          }
+        }, 5000); // Check every 5 seconds
+        
+        cleanupResources.intervals.push(checkClientConnection);
+        cleanupResources.intervals.push(keepAliveInterval);
+        cleanupResources.timeouts.push(translationTimeout);
         
         // Wait for ALL translations to complete successfully before proceeding
         const newTranslations = await Promise.race([translationPromise, timeoutPromise]);
         
-        // Clear keep-alive interval once translations complete
+        // Clean up intervals and timeouts
+        clearInterval(checkClientConnection);
         clearInterval(keepAliveInterval);
+        keepAliveInterval = null;
+        clearTimeout(translationTimeout);
+        
+        // Remove from cleanup resources
+        cleanupResources.intervals = cleanupResources.intervals.filter(i => i !== checkClientConnection && i !== keepAliveInterval);
+        cleanupResources.timeouts = cleanupResources.timeouts.filter(t => t !== translationTimeout);
+        
+        // Check if client disconnected after translation
+        if (req.aborted || req.destroyed) {
+          clearTimeout(requestTimeout);
+          return next(new ApiError('Request cancelled by client', 499));
+        }
         
         // Verify all required languages are translated
         const requiredLanguages = ['en', 'fr', 'de', 'ru', 'zh', 'th', 'ar'];
@@ -745,7 +883,6 @@ export const editYacht = async (req, res, next) => {
         
         if (missingLanguages.length > 0) {
           console.error('❌ Missing translations for languages:', missingLanguages);
-          clearInterval(keepAliveInterval);
           const errorResponse = JSON.stringify({
             statusCode: 500,
             message: `Translation incomplete: missing translations for ${missingLanguages.join(', ')}`,
@@ -760,8 +897,16 @@ export const editYacht = async (req, res, next) => {
         console.log('✅ All translations completed successfully for all languages');
       } catch (translationError) {
         console.error('❌ Translation error:', translationError.message);
-        // Clear keep-alive interval on error
-        clearInterval(keepAliveInterval);
+        
+        // Clean up all resources on error
+        cleanup();
+        
+        // Check if error was due to client disconnection
+        if (req.aborted || req.destroyed) {
+          console.log('⚠️ Client disconnected during translation');
+          return next(new ApiError('Request cancelled by client', 499));
+        }
+        
         const errorResponse = JSON.stringify({
           statusCode: 500,
           message: `Translation failed: ${translationError.message}. Please try again.`,
@@ -802,8 +947,8 @@ export const editYacht = async (req, res, next) => {
       runValidators: true,
     });
 
-    // Clear timeout since we're about to send response
-    clearTimeout(requestTimeout);
+    // Clean up all resources before sending response
+    cleanup();
 
     // Invalidate caches after edit
     await clearYachtCache();
@@ -833,8 +978,8 @@ export const editYacht = async (req, res, next) => {
       res
     );
   } catch (err) {
-    // Clear timeout on error
-    clearTimeout(requestTimeout);
+    // Clean up all resources on error
+    cleanup();
     
     if (
       err &&

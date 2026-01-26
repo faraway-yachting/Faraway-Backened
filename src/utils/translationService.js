@@ -403,6 +403,166 @@ function levenshteinDistance(str1, str2) {
   return matrix[str2.length][str1.length];
 }
 
+/**
+ * Translate content to a single language
+ * This function handles all fields for one language independently
+ * Can be run in parallel with other language translations
+ */
+async function translateToLanguage(lang, englishContent, fieldConfig) {
+  logger.info(`🔄 Translating to ${SUPPORTED_LANGUAGES[lang]}...`);
+  
+  try {
+    const fieldNames = Object.keys(fieldConfig);
+    const translatedObject = {};
+    let hasFailures = false;
+    let hasFallbacks = false;
+    
+    // Process fields sequentially within each language to avoid API overload
+    // Each language runs independently, so we can process all languages in parallel
+    for (const fieldName of fieldNames) {
+      const config = fieldConfig[fieldName];
+      const englishValue = englishContent[fieldName] || '';
+      const isArrayField = Array.isArray(englishValue);
+      const normalizedInput = isArrayField ? englishValue.join(', ') : englishValue;
+      
+      if (!normalizedInput || !normalizedInput.trim()) {
+        translatedObject[fieldName] = isArrayField ? [] : '';
+        continue;
+      }
+
+      const isSlug = fieldName === 'slug';
+      // ALWAYS use gpt-4o for slugs for better translation quality
+      const useGPT4ForField = isSlug ? true : (config.useGPT4 || false);
+      
+      // Retry logic for identical translations (API sometimes returns English)
+      let translatedValue;
+      let lastError;
+      const maxRetries = 3; // Retry twice if translation is identical
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // Always use gpt-4o for slugs, use config for other fields
+          translatedValue = await translateText(normalizedInput, lang, useGPT4ForField, isSlug);
+          
+          // Log what we got for debugging
+          if (attempt > 1) {
+            logger.info(`🔄 Retry ${attempt} for ${lang}.${fieldName} returned: "${translatedValue.substring(0, 50)}..."`);
+          }
+          
+          translatedValue = validateTranslation(translatedValue, normalizedInput, fieldName, lang, isSlug);
+          
+          // If we get here, validation passed - translation is good
+          translatedObject[fieldName] = isArrayField 
+            ? translatedValue.split(',').map(p => p.trim()).filter(Boolean) 
+            : translatedValue;
+          break; // Success, exit retry loop
+        } catch (err) {
+          lastError = err;
+          const isIdenticalError = err?.message?.includes('identical') || err?.message?.includes('similar');
+          
+          // If translation is identical and we have retries left, wait and retry
+          if (isIdenticalError && attempt < maxRetries) {
+            logger.warn(`⚠️ Translation for ${lang}.${fieldName} returned identical text (attempt ${attempt}/${maxRetries}), retrying...`, {
+              input: normalizedInput.substring(0, 100),
+              received: err?.message,
+              usingGPT4: useGPT4ForField
+            });
+            await new Promise(resolve => setTimeout(resolve, 1500 * attempt)); // Exponential backoff: 1.5s, 3s
+            continue;
+          }
+          
+          // If all retries exhausted, fallback to English instead of failing
+          logger.warn(`⚠️ Translation failed for ${lang}.${fieldName} after ${attempt} attempts, using English as fallback:`, {
+            error: err?.message || String(err),
+            fieldName,
+            language: SUPPORTED_LANGUAGES[lang],
+            inputLength: normalizedInput?.length || 0,
+            isSlug,
+            useGPT4: useGPT4ForField
+          });
+          
+          // Fallback to English content for this field
+          translatedObject[fieldName] = isArrayField ? englishValue : normalizedInput;
+          hasFailures = true;
+          hasFallbacks = true;
+          break; // Exit retry loop, use fallback
+        }
+      }
+    }
+
+    if (hasFallbacks) {
+      logger.warn(`⚠️ Translation to ${SUPPORTED_LANGUAGES[lang]} completed with some fields using English fallback`);
+    } else if (hasFailures) {
+      logger.warn(`⚠️ Translation to ${SUPPORTED_LANGUAGES[lang]} completed with some failures`);
+    } else {
+      logger.info(`✅ Translation to ${SUPPORTED_LANGUAGES[lang]} completed`);
+    }
+    
+    return { lang, translatedObject, hasFailures, hasFallbacks };
+  } catch (error) {
+    // If language translation completely fails, use English as fallback for all fields
+    logger.error(`❌ Translation failed for language ${SUPPORTED_LANGUAGES[lang]}, using English fallback:`, error?.message || error);
+    
+    const fallbackObject = {};
+    const fieldNames = Object.keys(fieldConfig);
+    fieldNames.forEach(fieldName => {
+      const englishValue = englishContent[fieldName] || '';
+      const isArrayField = Array.isArray(englishValue);
+      fallbackObject[fieldName] = isArrayField ? englishValue : englishValue;
+    });
+    
+    return { lang, translatedObject: fallbackObject, hasFailures: true, hasFallbacks: true };
+  }
+}
+
+/**
+ * Translate content to French
+ * Separate function for parallel execution
+ */
+async function translateToFrench(englishContent, fieldConfig) {
+  return translateToLanguage('fr', englishContent, fieldConfig);
+}
+
+/**
+ * Translate content to German
+ * Separate function for parallel execution
+ */
+async function translateToGerman(englishContent, fieldConfig) {
+  return translateToLanguage('de', englishContent, fieldConfig);
+}
+
+/**
+ * Translate content to Russian
+ * Separate function for parallel execution
+ */
+async function translateToRussian(englishContent, fieldConfig) {
+  return translateToLanguage('ru', englishContent, fieldConfig);
+}
+
+/**
+ * Translate content to Chinese
+ * Separate function for parallel execution
+ */
+async function translateToChinese(englishContent, fieldConfig) {
+  return translateToLanguage('zh', englishContent, fieldConfig);
+}
+
+/**
+ * Translate content to Thai
+ * Separate function for parallel execution
+ */
+async function translateToThai(englishContent, fieldConfig) {
+  return translateToLanguage('th', englishContent, fieldConfig);
+}
+
+/**
+ * Translate content to Arabic
+ * Separate function for parallel execution
+ */
+async function translateToArabic(englishContent, fieldConfig) {
+  return translateToLanguage('ar', englishContent, fieldConfig);
+}
+
 export async function translateContent(englishContent, fieldConfig, targetLanguages = DEFAULT_TARGET_LANGUAGES) {
   if (!englishContent || typeof englishContent !== 'object') {
     throw new Error('Invalid English content provided for translation');
@@ -411,181 +571,42 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
   const translations = { en: { ...englishContent } };
   const targetLangs = targetLanguages.filter(lang => lang !== 'en');
   
-  logger.info(`🌐 Starting translation to ${targetLangs.length} languages`);
+  logger.info(`🌐 Starting translation to ${targetLangs.length} languages in parallel...`);
 
-  // Global concurrency limiter to prevent API overload
-  // This allows parallel processing while maintaining reliability
-  class ConcurrencyLimiter {
-    constructor(maxConcurrent) {
-      this.maxConcurrent = maxConcurrent;
-      this.running = 0;
-      this.queue = [];
-    }
-
-    async execute(task) {
-      return new Promise((resolve, reject) => {
-        this.queue.push({ task, resolve, reject });
-        this.process();
-      });
-    }
-
-    async process() {
-      if (this.running >= this.maxConcurrent || this.queue.length === 0) {
-        return;
-      }
-
-      this.running++;
-      const { task, resolve, reject } = this.queue.shift();
-
-      try {
-        const result = await task();
-        resolve(result);
-      } catch (error) {
-        reject(error);
-      } finally {
-        this.running--;
-        this.process();
-      }
-    }
-  }
-
-  // Global limiter: max 6 concurrent API calls across all languages and fields
-  const globalLimiter = new ConcurrencyLimiter(6);
-
-  // Process fields with higher concurrency (3 at a time per language)
-  const limitConcurrency = async (tasks, limit) => {
-    const results = [];
-    for (let i = 0; i < tasks.length; i += limit) {
-      const batch = tasks.slice(i, i + limit);
-      const batchResults = await Promise.all(batch.map(task => globalLimiter.execute(task)));
-      results.push(...batchResults);
-      // Reduced delay between batches
-      if (i + limit < tasks.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-    return results;
+  // Create language-specific translation functions
+  const languageFunctions = {
+    fr: translateToFrench,
+    de: translateToGerman,
+    ru: translateToRussian,
+    zh: translateToChinese,
+    th: translateToThai,
+    ar: translateToArabic,
   };
 
-  // Process languages in parallel (2 at a time) for speed
-  // This is much faster than sequential while still being reliable
-  const languageTasks = targetLangs.map((lang, index) => async () => {
-    // Stagger language starts slightly to avoid thundering herd
-    if (index > 0) {
-      await new Promise(resolve => setTimeout(resolve, 200 * index));
-    }
-    
-    logger.info(`🔄 Translating to ${SUPPORTED_LANGUAGES[lang]}...`);
-    
-    try {
-      const fieldNames = Object.keys(fieldConfig);
-      const fieldTasks = fieldNames.map(fieldName => async () => {
-        const config = fieldConfig[fieldName];
-        const englishValue = englishContent[fieldName] || '';
-        const isArrayField = Array.isArray(englishValue);
-        const normalizedInput = isArrayField ? englishValue.join(', ') : englishValue;
-        
-        if (!normalizedInput || !normalizedInput.trim()) {
-          return { fieldName, translatedValue: isArrayField ? [] : '', success: true };
-        }
+  // Build array of translation promises for all target languages
+  // All languages run in parallel - this is much faster than sequential or batched processing
+  const translationPromises = targetLangs
+    .filter(lang => languageFunctions[lang]) // Only include supported languages
+    .map(lang => languageFunctions[lang](englishContent, fieldConfig));
 
-        const isSlug = fieldName === 'slug';
-        // ALWAYS use gpt-4o for slugs for better translation quality
-        const useGPT4ForField = isSlug ? true : (config.useGPT4 || false);
-        
-        // Retry logic for identical translations (API sometimes returns English)
-        let translatedValue;
-        let lastError;
-        const maxRetries = 3; // Retry twice if translation is identical
-        
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-          try {
-            // Always use gpt-4o for slugs, use config for other fields
-            translatedValue = await translateText(normalizedInput, lang, useGPT4ForField, isSlug);
-            
-            // Log what we got for debugging
-            if (attempt > 1) {
-              logger.info(`🔄 Retry ${attempt} for ${lang}.${fieldName} returned: "${translatedValue.substring(0, 50)}..."`);
-            }
-            
-            translatedValue = validateTranslation(translatedValue, normalizedInput, fieldName, lang, isSlug);
-            
-            // If we get here, validation passed - translation is good
-            return { fieldName, translatedValue: isArrayField ? translatedValue.split(',').map(p => p.trim()).filter(Boolean) : translatedValue, success: true };
-          } catch (err) {
-            lastError = err;
-            const isIdenticalError = err?.message?.includes('identical') || err?.message?.includes('similar');
-            
-            // If translation is identical and we have retries left, wait and retry
-            if (isIdenticalError && attempt < maxRetries) {
-              logger.warn(`⚠️ Translation for ${lang}.${fieldName} returned identical text (attempt ${attempt}/${maxRetries}), retrying...`, {
-                input: normalizedInput.substring(0, 100),
-                received: err?.message,
-                usingGPT4: useGPT4ForField
-              });
-              await new Promise(resolve => setTimeout(resolve, 1500 * attempt)); // Exponential backoff: 1.5s, 3s
-              continue;
-            }
-            
-            // If all retries exhausted, fallback to English instead of failing
-            logger.warn(`⚠️ Translation failed for ${lang}.${fieldName} after ${attempt} attempts, using English as fallback:`, {
-              error: err?.message || String(err),
-              fieldName,
-              language: SUPPORTED_LANGUAGES[lang],
-              inputLength: normalizedInput?.length || 0,
-              isSlug,
-              useGPT4: useGPT4ForField
-            });
-            
-            // Fallback to English content for this field
-            return { 
-              fieldName, 
-              translatedValue: isArrayField ? englishValue : normalizedInput, 
-              success: false,
-              fallback: true,
-              error: err?.message || String(err)
-            };
-          }
-        }
-        
-        // Should never reach here, but just in case
-        return { 
-          fieldName, 
-          translatedValue: isArrayField ? englishValue : normalizedInput, 
-          success: false,
-          fallback: true,
-          error: lastError?.message || 'Unknown translation error'
-        };
-      });
-
-      // Increased field concurrency to 3 for speed
-      const translationResults = await limitConcurrency(fieldTasks, 3);
-      const translatedObject = {};
-      let hasFailures = false;
-      let hasFallbacks = false;
-      
-      translationResults.forEach(({ fieldName, translatedValue, success, fallback, error }) => {
-        translatedObject[fieldName] = translatedValue;
-        if (!success) {
-          hasFailures = true;
-          if (fallback) {
-            hasFallbacks = true;
-          }
-        }
-      });
-
-      if (hasFallbacks) {
-        logger.warn(`⚠️ Translation to ${SUPPORTED_LANGUAGES[lang]} completed with some fields using English fallback`);
-      } else if (hasFailures) {
-        logger.warn(`⚠️ Translation to ${SUPPORTED_LANGUAGES[lang]} completed with some failures`);
-      } else {
-        logger.info(`✅ Translation to ${SUPPORTED_LANGUAGES[lang]} completed`);
-      }
-      
-      return { lang, translatedObject, hasFailures, hasFallbacks };
-    } catch (error) {
-      // If language translation completely fails, use English as fallback for all fields
-      logger.error(`❌ Translation failed for language ${SUPPORTED_LANGUAGES[lang]}, using English fallback:`, error?.message || error);
+  // Execute all language translations in parallel using Promise.allSettled
+  // This ensures that if one language fails, others can still complete
+  const languageResults = await Promise.allSettled(translationPromises);
+  
+  // Build final translations object and track overall status
+  let totalFailures = 0;
+  let totalFallbacks = 0;
+  
+  languageResults.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      const { lang, translatedObject, hasFailures, hasFallbacks } = result.value;
+      translations[lang] = translatedObject;
+      if (hasFailures) totalFailures++;
+      if (hasFallbacks) totalFallbacks++;
+    } else {
+      // If a language translation promise was rejected, use English fallback
+      const lang = targetLangs[index];
+      logger.error(`❌ Translation promise rejected for ${SUPPORTED_LANGUAGES[lang]}, using English fallback:`, result.reason);
       
       const fallbackObject = {};
       const fieldNames = Object.keys(fieldConfig);
@@ -595,21 +616,10 @@ export async function translateContent(englishContent, fieldConfig, targetLangua
         fallbackObject[fieldName] = isArrayField ? englishValue : englishValue;
       });
       
-      return { lang, translatedObject: fallbackObject, hasFailures: true, hasFallbacks: true };
+      translations[lang] = fallbackObject;
+      totalFailures++;
+      totalFallbacks++;
     }
-  });
-
-  // Process 2 languages in parallel for speed
-  const languageResults = await limitConcurrency(languageTasks, 2);
-  
-  // Build final translations object and track overall status
-  let totalFailures = 0;
-  let totalFallbacks = 0;
-  
-  languageResults.forEach(({ lang, translatedObject, hasFailures, hasFallbacks }) => {
-    translations[lang] = translatedObject;
-    if (hasFailures) totalFailures++;
-    if (hasFallbacks) totalFallbacks++;
   });
 
   if (totalFallbacks > 0) {
