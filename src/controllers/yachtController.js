@@ -199,11 +199,6 @@ export const addYacht = async (req, res, next) => {
       }
     }
 
-    // Log if client disconnected, but continue processing
-    if (clientDisconnected) {
-      console.log('ℹ️ Client disconnected after image uploads - continuing processing in background');
-    }
-
     // Derive canonical slug from English translation and enforce presence of translations
     try {
       const canonicalSlug = getSlugOrFail(yachtData);
@@ -283,9 +278,7 @@ export const addYacht = async (req, res, next) => {
         translationTimeout = setTimeout(() => reject(new Error('Translation timeout after 30 minutes')), 1800000);
       });
       
-      // Don't monitor connection during translation - only rely on event listeners
-      // Event listeners (req.on('close') and req.on('aborted')) will set clientDisconnected = true
-      // on actual disconnects. Checking req.aborted/destroyed during translation causes false positives.
+      // Don't monitor connection during translation - rely on checkpoints before/after only
       
       cleanupResources.timeouts.push(translationTimeout);
 
@@ -327,8 +320,8 @@ export const addYacht = async (req, res, next) => {
       // Clean up all resources on error
       cleanup();
       
-      // Check if error is due to client disconnect (only check clientDisconnected flag)
-      if (clientDisconnected) {
+      // Check if error is due to client disconnect
+      if (isClientDisconnected()) {
         console.log('ℹ️ Client disconnected during translation error - stopping processing');
         
         // Try to send response to close the connection properly
@@ -430,11 +423,7 @@ export const addYacht = async (req, res, next) => {
     cleanup();
     
     // Log completion
-    if (clientDisconnected) {
-      console.log('✅ Yacht creation completed successfully (client was disconnected, but yacht saved)');
-    } else {
-      console.log('✅ Yacht creation completed successfully');
-    }
+    console.log('✅ Yacht creation completed successfully');
     
     // Always try to send response, even if client appears disconnected
     // Frontend might still be waiting/loading and can receive the response
