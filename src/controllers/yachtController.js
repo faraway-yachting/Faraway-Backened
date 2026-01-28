@@ -44,6 +44,32 @@ export const addYacht = async (req, res, next) => {
   res.set('Connection', 'keep-alive');
   res.set('Keep-Alive', 'timeout=1800'); // 30 minutes (increased for translation processing and large uploads)
   
+  // Track cleanup resources (only for timeouts, not for cancelling on client disconnect)
+  const cleanupResources = {
+    timeouts: [],
+    intervals: [],
+  };
+  
+  // Cleanup function to clear all resources (only timeouts/intervals, not processing)
+  const cleanup = () => {
+    cleanupResources.timeouts.forEach(timeout => clearTimeout(timeout));
+    cleanupResources.intervals.forEach(interval => clearInterval(interval));
+    cleanupResources.timeouts = [];
+    cleanupResources.intervals = [];
+  };
+  
+  // Helper function to check if client actually disconnected
+  // Check req.aborted (most reliable) and socket state as backup
+  const isClientDisconnected = () => {
+    // req.aborted is the most reliable indicator when user refreshes/closes tab
+    if (req.aborted === true) return true;
+    
+    // Also check socket state as backup - if socket is destroyed, client disconnected
+    if (req.socket && req.socket.destroyed === true) return true;
+    
+    return false;
+  };
+  
   try {
     let yachtData = req.body;
 
@@ -212,21 +238,123 @@ export const addYacht = async (req, res, next) => {
       .lean()
       .exec();
     if (existingSlug) {
+      cleanup();
       return next(new ApiError('Yacht with this slug already exists', 409));
+    }
+
+    // STEP 1: Check if client disconnected BEFORE starting translation (main checkpoint)
+    // This is the critical checkpoint - if user refreshes, stop here to avoid wasting resources
+    // Directly check request state at this moment (no event listeners to avoid false positives)
+    if (isClientDisconnected()) {
+      console.log('ℹ️ Client disconnected before translation - stopping processing');
+      cleanup();
+      
+      // Try to send response to close the connection properly
+      try {
+        if (!res.headersSent) {
+          res.status(499).json({
+            statusCode: 499,
+            message: 'Client disconnected - yacht creation cancelled',
+            success: false,
+          });
+        } else {
+          res.end();
+        }
+      } catch (err) {
+        // Connection already closed, ignore
+      }
+      return; // Stop immediately, don't translate, don't save
     }
 
     // Auto-translate to all configured locales
     // Add timeout protection (max 30 minutes for translation)
+    console.log('🌐 Starting translation process...');
     let translations;
+    let translationTimeout;
     try {
+
       const translationPromise = processTranslations(englishSource, YACHT_FIELD_CONFIG);
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Translation timeout after 30 minutes')), 1800000)
-      );
+      const timeoutPromise = new Promise((_, reject) => {
+        translationTimeout = setTimeout(() => reject(new Error('Translation timeout after 30 minutes')), 1800000);
+      });
       
+      // Don't monitor connection during translation - rely on checkpoints before/after only
+      
+      cleanupResources.timeouts.push(translationTimeout);
+
+      // Race between translation and timeout only (no cancellation on client disconnect)
       translations = await Promise.race([translationPromise, timeoutPromise]);
+      
+      // Clean up timeouts
+      clearTimeout(translationTimeout);
+      cleanupResources.timeouts = cleanupResources.timeouts.filter(t => t !== translationTimeout);
+      
+      // STEP 2: Check if client disconnected AFTER translation completes
+      // Directly check request state at this moment
+      if (isClientDisconnected()) {
+        console.log('ℹ️ Client disconnected during translation - stopping processing (yacht not saved)');
+        cleanup();
+        
+        // Try to send response to close the connection properly (in case client reconnected)
+        try {
+          if (!res.headersSent) {
+            res.status(499).json({
+              statusCode: 499,
+              message: 'Client disconnected - yacht creation cancelled',
+              success: false,
+            });
+            console.log('✅ Sent 499 response for disconnected client');
+          } else {
+            res.end();
+            console.log('✅ Closed response stream for disconnected client');
+          }
+        } catch (err) {
+          console.log('ℹ️ Could not send response (connection already closed):', err.message);
+          // Connection already closed, ignore
+        }
+        return; // Stop here, don't save to database
+      }
+      
+      console.log('✅ All translations completed successfully');
     } catch (translationError) {
+      // Clean up all resources on error
+      cleanup();
+      
+      // Check if error is due to client disconnect
+      if (isClientDisconnected()) {
+        console.log('ℹ️ Client disconnected during translation error - stopping processing');
+        
+        // Try to send response to close the connection properly
+        try {
+          if (!res.headersSent) {
+            res.status(499).json({
+              statusCode: 499,
+              message: 'Client disconnected - yacht creation cancelled',
+              success: false,
+            });
+          } else {
+            res.end();
+          }
+        } catch (err) {
+          // Connection already closed, ignore
+        }
+        return; // Stop here, don't send error response
+      }
+      
+      // Log error
       console.error('❌ Translation error during yacht creation:', translationError);
+      
+      // If it's a timeout error, provide more context
+      if (translationError?.message?.includes('timeout')) {
+        console.error('⏱️ Translation timeout - this may take longer than expected');
+        return next(
+          new ApiError(
+            'Translation is taking longer than expected. Please try again.',
+            504
+          )
+        );
+      }
+      
       return next(
         new ApiError(
           'Failed to translate yacht content. Please try again later.',
@@ -235,7 +363,32 @@ export const addYacht = async (req, res, next) => {
       );
     }
 
+    // STEP 3: Check if client disconnected BEFORE database save
+    // Final checkpoint before saving - if user refreshed, stop here
+    // Directly check request state at this moment
+    if (isClientDisconnected()) {
+      console.log('ℹ️ Client disconnected before database save - stopping processing (yacht not saved)');
+      cleanup();
+      
+      // Try to send response to close the connection properly
+      try {
+        if (!res.headersSent) {
+          res.status(499).json({
+            statusCode: 499,
+            message: 'Client disconnected - yacht creation cancelled',
+            success: false,
+          });
+        } else {
+          res.end();
+        }
+      } catch (err) {
+        // Connection already closed, ignore
+      }
+      return; // Stop here, don't save to database
+    }
+
     // Ensure empty strings are preserved and status defaults to draft
+    console.log('💾 Saving yacht to database...');
     const yachtToCreate = {
       ...yachtData,
       slug: englishSource.slug,
@@ -256,13 +409,80 @@ export const addYacht = async (req, res, next) => {
       displayOrder: yachtData.displayOrder ?? 9999,
     };
 
+    // Save yacht to database (regardless of client connection status)
     const newYacht = await Yacht.create(yachtToCreate);
+    console.log('✅ Yacht saved to database successfully');
+    
     // Invalidate caches so lists reflect the new yacht
     await clearYachtCache();
+    
     // Map image filenames to URLs and return new yacht
     const yachtWithUrls = mapImageFilenamesToUrls(newYacht, req);
-    return SuccessHandler(yachtWithUrls, 201, 'Yacht added successfully', res);
+    
+    // Clean up before sending response
+    cleanup();
+    
+    // Log completion
+    console.log('✅ Yacht creation completed successfully');
+    
+    // Always try to send response, even if client appears disconnected
+    // Frontend might still be waiting/loading and can receive the response
+    try {
+      if (req.aborted || req.destroyed) {
+        console.log('ℹ️ Client appears disconnected - attempting to send response anyway');
+      }
+      
+      // Check if headers were already sent (chunked transfer scenario)
+      if (res.headersSent) {
+        const successResponse = JSON.stringify({
+          statusCode: 201,
+          message: 'Yacht added successfully',
+          success: true,
+          data: yachtWithUrls,
+        });
+        res.write(successResponse);
+        res.end();
+        console.log('✅ Success response sent successfully (chunked)');
+        return;
+      }
+      
+      // Try to send response using SuccessHandler (will succeed if client reconnected or is still waiting)
+      SuccessHandler(yachtWithUrls, 201, 'Yacht added successfully', res);
+      console.log('✅ Success response sent successfully');
+      return;
+    } catch (responseError) {
+      // If sending response fails, try alternative method
+      try {
+        if (!res.headersSent) {
+          res.status(201).json({
+            statusCode: 201,
+            message: 'Yacht added successfully',
+            success: true,
+            data: yachtWithUrls,
+          });
+          console.log('✅ Success response sent successfully (fallback method)');
+        } else {
+          const successResponse = JSON.stringify({
+            statusCode: 201,
+            message: 'Yacht added successfully',
+            success: true,
+            data: yachtWithUrls,
+          });
+          res.write(successResponse);
+          res.end();
+          console.log('✅ Success response sent successfully (chunked fallback)');
+        }
+      } catch (fallbackError) {
+        // If all methods fail, log it but don't throw (yacht is already saved)
+        console.log('ℹ️ Could not send response (client disconnected):', fallbackError.message);
+        // Yacht is saved successfully, so we just return without error
+      }
+      return;
+    }
   } catch (err) {
+    // Clean up on error
+    cleanup();
+    
     if (
       err &&
       err.code === 11000 &&
@@ -506,10 +726,9 @@ export const editYacht = async (req, res, next) => {
   // Set a timeout for the entire request to prevent hanging
   // Note: Translations can take up to 10 minutes, plus file uploads and processing
   // Allow up to 30 minutes total to handle translations + image uploads + database operations
+  // This timeout only logs a warning, it doesn't cancel processing
   const requestTimeout = setTimeout(() => {
-    if (!res.headersSent) {
-      return next(new ApiError('Request timeout - yacht update is taking too long', 504));
-    }
+    console.warn('⏱️ Request taking longer than 30 minutes - this is unusual but processing continues');
   }, 1800000); // 30 minutes max (allows time for translations + uploads/processing)
   
   // Set keep-alive headers to prevent connection timeout during long translations
@@ -517,7 +736,53 @@ export const editYacht = async (req, res, next) => {
   res.set('Connection', 'keep-alive');
   res.set('Keep-Alive', 'timeout=1800'); // 30 minutes
 
+  // Track cleanup resources (only for timeouts, not for cancelling on client disconnect)
+  const cleanupResources = {
+    timeouts: [requestTimeout],
+    intervals: [],
+  };
+  
+  // Cleanup function to clear all resources (only timeouts/intervals, not processing)
+  const cleanup = () => {
+    cleanupResources.timeouts.forEach(timeout => clearTimeout(timeout));
+    cleanupResources.intervals.forEach(interval => clearInterval(interval));
+    cleanupResources.timeouts = [];
+    cleanupResources.intervals = [];
+  };
+  
+  // Helper function to check if client actually disconnected
+  // Check req.aborted (most reliable) and socket state as backup
+  const isClientDisconnected = () => {
+    // req.aborted is the most reliable indicator when user refreshes/closes tab
+    if (req.aborted === true) return true;
+    
+    // Also check socket state as backup - if socket is destroyed, client disconnected
+    if (req.socket && req.socket.destroyed === true) return true;
+    
+    return false;
+  };
+
   try {
+    // Early checkpoint: Check if client disconnected before any processing
+    if (isClientDisconnected()) {
+      console.log('ℹ️ Client disconnected at start - stopping processing');
+      cleanup();
+      try {
+        if (!res.headersSent) {
+          res.status(499).json({
+            statusCode: 499,
+            message: 'Client disconnected - yacht update cancelled',
+            success: false,
+          });
+        } else {
+          res.end();
+        }
+      } catch (err) {
+        // Connection already closed, ignore
+      }
+      return;
+    }
+
     const { id } = req.query;
     let yachtData = req.body;
 
@@ -698,29 +963,34 @@ export const editYacht = async (req, res, next) => {
     if (hasEnglishChanges) {
       console.log('✅ English content changed, processing translations before saving...');
       
-      // Send headers early with Transfer-Encoding: chunked to prevent gateway timeout
-      // This allows us to send periodic keep-alive data while translations process
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Transfer-Encoding': 'chunked',
-        'Connection': 'keep-alive',
-        'Keep-Alive': 'timeout=1800', // 30 minutes (matches request timeout)
-      });
-      
-      // Send periodic keep-alive chunks to prevent proxy/gateway timeout (504 errors)
-      // Send a heartbeat every 15 seconds to keep the connection alive during translations
-      // This prevents nginx/proxy from closing the connection (default timeout is 60s)
-      const keepAliveInterval = setInterval(() => {
+      // STEP 1: Check if client disconnected BEFORE starting translation (main checkpoint)
+      // This is the critical checkpoint - if user refreshes, stop here to avoid wasting resources
+      // Directly check request state at this moment (no event listeners to avoid false positives)
+      if (isClientDisconnected()) {
+        console.log('ℹ️ Client disconnected before translation - stopping processing');
+        cleanup();
+        
+        // Try to send response to close the connection properly
         try {
-          // Send a space character as keep-alive chunk (prevents 504 Gateway Timeout)
-          // Empty string might not work, so send a minimal chunk
-          res.write(' '); // Space character as keep-alive signal
+          if (!res.headersSent) {
+            res.status(499).json({
+              statusCode: 499,
+              message: 'Client disconnected - yacht update cancelled',
+              success: false,
+            });
+          } else {
+            res.end();
+          }
         } catch (err) {
-          // Connection closed, clear interval
-          clearInterval(keepAliveInterval);
+          // Connection already closed, ignore
         }
-      }, 15000); // Every 15 seconds (well within nginx's default 60s timeout)
+        return; // Stop immediately, don't translate, don't save
+      }
       
+      // Don't send headers early - wait for translation to complete
+      // Event listeners will handle disconnect detection without keep-alive
+      
+      let translationTimeout;
       try {
         // Process translations with timeout protection (max 30 minutes)
         const translationPromise = processTranslations(
@@ -729,15 +999,48 @@ export const editYacht = async (req, res, next) => {
           currentTranslations
         );
         
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Translation timeout after 30 minutes')), 1800000)
-        );
+        const timeoutPromise = new Promise((_, reject) => {
+          translationTimeout = setTimeout(() => reject(new Error('Translation timeout after 30 minutes')), 1800000);
+        });
+        
+        // Don't monitor connection during translation - check at checkpoints only
+        // This avoids false positives from checking during long operations
+        
+        cleanupResources.timeouts.push(translationTimeout);
         
         // Wait for ALL translations to complete successfully before proceeding
+        // Race between translation and timeout only (no cancellation on client disconnect)
         const newTranslations = await Promise.race([translationPromise, timeoutPromise]);
         
-        // Clear keep-alive interval once translations complete
-        clearInterval(keepAliveInterval);
+        // Clean up timeouts
+        clearTimeout(translationTimeout);
+        cleanupResources.timeouts = cleanupResources.timeouts.filter(t => t !== translationTimeout);
+        
+        // STEP 2: Check if client disconnected AFTER translation completes
+        // Check both the flag (from event listeners) and req.aborted for reliability
+        if (isClientDisconnected()) {
+          console.log('ℹ️ Client disconnected during translation - stopping processing (yacht not updated)');
+          cleanup();
+          
+          // Try to send response to close the connection properly (in case client reconnected)
+          try {
+            if (!res.headersSent) {
+              res.status(499).json({
+                statusCode: 499,
+                message: 'Client disconnected - yacht update cancelled',
+                success: false,
+              });
+              console.log('✅ Sent 499 response for disconnected client');
+            } else {
+              res.end();
+              console.log('✅ Closed response stream for disconnected client');
+            }
+          } catch (err) {
+            console.log('ℹ️ Could not send response (connection already closed):', err.message);
+            // Connection already closed, ignore
+          }
+          return; // Stop here, don't save to database
+        }
         
         // Verify all required languages are translated
         const requiredLanguages = ['en', 'fr', 'de', 'ru', 'zh', 'th', 'ar'];
@@ -745,7 +1048,6 @@ export const editYacht = async (req, res, next) => {
         
         if (missingLanguages.length > 0) {
           console.error('❌ Missing translations for languages:', missingLanguages);
-          clearInterval(keepAliveInterval);
           const errorResponse = JSON.stringify({
             statusCode: 500,
             message: `Translation incomplete: missing translations for ${missingLanguages.join(', ')}`,
@@ -759,21 +1061,75 @@ export const editYacht = async (req, res, next) => {
         updateData.translations = newTranslations;
         console.log('✅ All translations completed successfully for all languages');
       } catch (translationError) {
+        // Clean up all resources on error
+        cleanup();
+        
+        // Check if error is due to client disconnect
+        if (isClientDisconnected()) {
+          console.log('ℹ️ Client disconnected during translation error - stopping processing');
+          
+          // Try to send response to close the connection properly
+          try {
+            if (!res.headersSent) {
+              res.status(499).json({
+                statusCode: 499,
+                message: 'Client disconnected - yacht update cancelled',
+                success: false,
+              });
+            } else {
+              res.end();
+            }
+          } catch (err) {
+            // Connection already closed, ignore
+          }
+          return; // Stop here, don't send error response
+        }
+        
+        // Log error
         console.error('❌ Translation error:', translationError.message);
-        // Clear keep-alive interval on error
-        clearInterval(keepAliveInterval);
-        const errorResponse = JSON.stringify({
-          statusCode: 500,
-          message: `Translation failed: ${translationError.message}. Please try again.`,
-          success: false,
-        });
-        res.write(errorResponse);
-        res.end();
-        return;
+        
+        // If it's a timeout error, provide more context
+        if (translationError?.message?.includes('timeout')) {
+          console.error('⏱️ Translation timeout - this may take longer than expected');
+          return next(
+            new ApiError(
+              'Translation is taking longer than expected. Please try again.',
+              504
+            )
+          );
+        }
+        
+        return next(
+          new ApiError(
+            `Translation failed: ${translationError.message}. Please try again.`,
+            500
+          )
+        );
       }
     } else if (yachtData.translations || incomingEnglish && Object.keys(incomingEnglish).length > 0) {
       // If translations provided but English hasn't changed, still update English with new values
       // This ensures English is updated even if comparison didn't detect changes (e.g., same content but different format)
+      
+      // Checkpoint: Check if client disconnected before processing translations update
+      if (isClientDisconnected()) {
+        console.log('ℹ️ Client disconnected before translations update - stopping processing');
+        cleanup();
+        try {
+          if (!res.headersSent) {
+            res.status(499).json({
+              statusCode: 499,
+              message: 'Client disconnected - yacht update cancelled',
+              success: false,
+            });
+          } else {
+            res.end();
+          }
+        } catch (err) {
+          // Connection already closed, ignore
+        }
+        return;
+      }
+      
       updateData.translations = {
         ...currentTranslations, // Preserve all existing languages
         en: {
@@ -796,14 +1152,40 @@ export const editYacht = async (req, res, next) => {
       updateData.slug = existingYacht.slug;
     }
 
-    // Update the yacht (this happens quickly, before translations complete)
+    // STEP 3: Check if client disconnected BEFORE database save
+    // Final checkpoint before saving - if user refreshed, stop here
+    // Directly check request state at this moment
+    if (isClientDisconnected()) {
+      console.log('ℹ️ Client disconnected before database save - stopping processing (yacht not updated)');
+      cleanup();
+      
+      // Try to send response to close the connection properly
+      try {
+        if (!res.headersSent) {
+          res.status(499).json({
+            statusCode: 499,
+            message: 'Client disconnected - yacht update cancelled',
+            success: false,
+          });
+        } else {
+          res.end();
+        }
+      } catch (err) {
+        // Connection already closed, ignore
+      }
+      return; // Stop here, don't save to database
+    }
+
+    // Update the yacht
+    console.log('💾 Updating yacht in database...');
     const updatedYacht = await Yacht.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     });
+    console.log('✅ Yacht updated in database successfully');
 
-    // Clear timeout since we're about to send response
-    clearTimeout(requestTimeout);
+    // Clean up all resources before sending response
+    cleanup();
 
     // Invalidate caches after edit
     await clearYachtCache();
@@ -811,30 +1193,72 @@ export const editYacht = async (req, res, next) => {
     // Map image filenames to URLs and return updated yacht
     const yachtWithUrls = mapImageFilenamesToUrls(updatedYacht, req);
     
-    // Send success response after everything is complete (including translations)
-    // If headers were already sent (chunked transfer), write JSON and end
-    if (res.headersSent) {
-      const successResponse = JSON.stringify({
-        statusCode: 200,
-        message: 'Yacht updated successfully',
-        success: true,
-        data: yachtWithUrls,
-      });
-      res.write(successResponse);
-      res.end();
+    // Log completion
+    console.log('✅ Yacht update completed successfully');
+    
+    // Always try to send response, even if client appears disconnected
+    // Frontend might still be waiting/loading and can receive the response
+    try {
+      if (req.aborted || req.destroyed) {
+        console.log('ℹ️ Client appears disconnected - attempting to send response anyway');
+      }
+      
+      // Send success response after everything is complete (including translations)
+      // If headers were already sent (chunked transfer), write JSON and end
+      if (res.headersSent) {
+        const successResponse = JSON.stringify({
+          statusCode: 200,
+          message: 'Yacht updated successfully',
+          success: true,
+          data: yachtWithUrls,
+        });
+        res.write(successResponse);
+        res.end();
+        console.log('✅ Success response sent successfully (chunked)');
+        return;
+      }
+      
+      // Otherwise use standard SuccessHandler
+      SuccessHandler(
+        yachtWithUrls,
+        200,
+        'Yacht updated successfully',
+        res
+      );
+      console.log('✅ Success response sent successfully');
+      return;
+    } catch (responseError) {
+      // If sending response fails, try alternative method
+      try {
+        if (!res.headersSent) {
+          res.status(200).json({
+            statusCode: 200,
+            message: 'Yacht updated successfully',
+            success: true,
+            data: yachtWithUrls,
+          });
+          console.log('✅ Success response sent successfully (fallback method)');
+        } else {
+          const successResponse = JSON.stringify({
+            statusCode: 200,
+            message: 'Yacht updated successfully',
+            success: true,
+            data: yachtWithUrls,
+          });
+          res.write(successResponse);
+          res.end();
+          console.log('✅ Success response sent successfully (chunked fallback)');
+        }
+      } catch (fallbackError) {
+        // If all methods fail, log it but don't throw (yacht is already saved)
+        console.log('ℹ️ Could not send response (client disconnected):', fallbackError.message);
+        // Yacht is saved successfully, so we just return without error
+      }
       return;
     }
-    
-    // Otherwise use standard SuccessHandler
-    return SuccessHandler(
-      yachtWithUrls,
-      200,
-      'Yacht updated successfully',
-      res
-    );
   } catch (err) {
-    // Clear timeout on error
-    clearTimeout(requestTimeout);
+    // Clean up all resources on error
+    cleanup();
     
     if (
       err &&
